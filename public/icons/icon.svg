@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#064e3b" />
+      <stop offset="100%" stop-color="#022c22" />
+    </linearGradient>
+    <linearGradient id="leaf" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#bg)" />
+  
+  <!-- Store Front / Canopy -->
+  <path d="M96 200 L256 120 L416 200 L416 380 Q416 400 396 400 L116 400 Q96 400 96 380 Z" fill="#047857" opacity="0.3"/>
+  <path d="M120 220 L256 150 L392 220 L392 380 L120 380 Z" fill="#065f46" stroke="#10b981" stroke-width="8" stroke-linejoin="round"/>
+  
+  <!-- Kerala Spices Leaf / Produce symbol -->
+  <path d="M256 180 C320 180 350 240 330 310 C310 370 256 370 256 370 C256 370 202 370 182 310 C162 240 192 180 256 180 Z" fill="url(#leaf)" />
+  <path d="M256 200 L256 360" stroke="#064e3b" stroke-width="6" stroke-linecap="round"/>
+  <path d="M256 260 L290 230" stroke="#064e3b" stroke-width="5" stroke-linecap="round"/>
+  <path d="M256 290 L220 260" stroke="#064e3b" stroke-width="5" stroke-linecap="round"/>
+  <path d="M256 320 L285 295" stroke="#064e3b" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- INR Rupee symbol overlay badge -->
+  <circle cx="370" cy="150" r="45" fill="#f59e0b" stroke="#ffffff" stroke-width="6"/>
+  <text x="370" y="165" font-family="Arial, sans-serif" font-size="44" font-weight="900" fill="#ffffff" text-anchor="middle">₹</text>
+</svg>
