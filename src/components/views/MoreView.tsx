@@ -33,6 +33,10 @@ import {
   RefreshCw,
   Building2,
   Wallet,
+  CloudCheck,
+  CloudSync,
+  CloudOff,
+  Cloud,
 } from 'lucide-react';
 import { Modal } from '@/components/Modal';
 import jsPDF from 'jspdf';
@@ -71,7 +75,11 @@ export const MoreView: React.FC = () => {
     exportDataJSON,
     importDataJSON,
     resetToDemo,
+    syncStatus,
+    pullFromCloud,
+    pushToCloud,
   } = useStore();
+  const [cloudMessage, setCloudMessage] = useState<string | null>(null);
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const currentMonthStr = todayStr.slice(0, 7); // YYYY-MM
@@ -1285,6 +1293,78 @@ export const MoreView: React.FC = () => {
               Save Settings
             </button>
           </form>
+
+          {/* Cloud Database Sync (Supabase) */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                Supabase Cloud Database
+              </h2>
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                  syncStatus === 'synced'
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : syncStatus === 'syncing'
+                    ? 'bg-blue-100 text-blue-800'
+                    : syncStatus === 'error'
+                    ? 'bg-amber-100 text-amber-800'
+                    : 'bg-slate-100 text-slate-600'
+                }`}
+              >
+                {syncStatus === 'synced' && <CloudCheck className="w-3 h-3 text-emerald-600" />}
+                {syncStatus === 'syncing' && <CloudSync className="w-3 h-3 animate-spin text-blue-600" />}
+                {syncStatus === 'error' && <CloudOff className="w-3 h-3 text-amber-600" />}
+                {syncStatus === 'unconfigured' && <Cloud className="w-3 h-3 text-slate-500" />}
+                {syncStatus === 'synced'
+                  ? 'Connected & Synced'
+                  : syncStatus === 'syncing'
+                  ? 'Syncing...'
+                  : syncStatus === 'error'
+                  ? 'Offline / Sync Error'
+                  : 'Local Storage Only'}
+              </span>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              Transactions auto-sync to Supabase in the background whenever online, keeping all phones and computers in sync.
+            </p>
+
+            {cloudMessage && (
+              <div className="text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 text-slate-800">
+                {cloudMessage}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-2 mt-1">
+              <button
+                type="button"
+                onClick={async () => {
+                  setCloudMessage('Pulling latest data from Supabase...');
+                  const ok = await pullFromCloud();
+                  setCloudMessage(ok ? 'Synced successfully from cloud!' : 'Cloud sync failed. Check internet/keys.');
+                  setTimeout(() => setCloudMessage(null), 3000);
+                }}
+                className="h-11 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Pull from Cloud</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  setCloudMessage('Pushing local data to Supabase...');
+                  const ok = await pushToCloud();
+                  setCloudMessage(ok ? 'Saved successfully to Supabase!' : 'Upload failed. Check internet/keys.');
+                  setTimeout(() => setCloudMessage(null), 3000);
+                }}
+                className="h-11 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <Database className="w-3.5 h-3.5" />
+                <span>Push to Cloud</span>
+              </button>
+            </div>
+          </div>
 
           {/* Backup & Restore */}
           <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col gap-3">

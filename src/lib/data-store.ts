@@ -259,12 +259,130 @@ export function getDefaultStoreData(): ERPStoreData {
   };
 }
 
+export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error' | 'unconfigured';
+
 class ERPDataStore {
   private data: ERPStoreData;
   private listeners: Set<() => void> = new Set();
+  private syncStatus: SyncStatus = isSupabaseConfigured ? 'idle' : 'unconfigured';
+  private syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private initialSyncDone: boolean = false;
 
   constructor() {
     this.data = this.loadFromStorage();
+    if (typeof window !== 'undefined') {
+      // Background initial sync
+      setTimeout(() => {
+        this.initCloudSync();
+      }, 300);
+
+      window.addEventListener('online', () => {
+        console.log('Online detected: pulling latest data from cloud...');
+        this.pullFromCloud();
+      });
+    }
+  }
+
+  private async initCloudSync() {
+    if (this.initialSyncDone) return;
+    this.initialSyncDone = true;
+    if (isSupabaseConfigured && supabase) {
+      await this.pullFromCloud();
+    }
+  }
+
+  public getSyncStatus(): SyncStatus {
+    return this.syncStatus;
+  }
+
+  private setSyncStatus(status: SyncStatus): void {
+    this.syncStatus = status;
+    this.notifyListeners();
+  }
+
+  public async pullFromCloud(): Promise<boolean> {
+    if (!supabase || !isSupabaseConfigured) {
+      this.setSyncStatus('unconfigured');
+      return false;
+    }
+    try {
+      this.setSyncStatus('syncing');
+      const { data, error } = await supabase
+        .from('erp_store')
+        .select('data, updated_at')
+        .eq('id', 'shop_main')
+        .maybeSingle();
+
+      if (error) {
+        console.error('Supabase pull error:', error);
+        this.setSyncStatus('error');
+        return false;
+      }
+
+      if (data && data.data) {
+        const cloudData = data.data as ERPStoreData;
+        this.data = {
+          ...getDefaultStoreData(),
+          ...cloudData,
+          products: cloudData.products && cloudData.products.length > 0 ? cloudData.products : INITIAL_PRODUCTS,
+          expense_categories: cloudData.expense_categories && cloudData.expense_categories.length > 0 ? cloudData.expense_categories : INITIAL_EXPENSE_CATEGORIES,
+        };
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
+        }
+        this.setSyncStatus('synced');
+        this.notifyListeners();
+        return true;
+      } else {
+        // First time cloud setup: push current local state to cloud
+        await this.pushToCloud();
+        return true;
+      }
+    } catch (err) {
+      console.error('Failed to sync from Supabase', err);
+      this.setSyncStatus('error');
+      return false;
+    }
+  }
+
+  public async pushToCloud(): Promise<boolean> {
+    if (!supabase || !isSupabaseConfigured) {
+      this.setSyncStatus('unconfigured');
+      return false;
+    }
+    try {
+      this.setSyncStatus('syncing');
+      const { error } = await supabase
+        .from('erp_store')
+        .upsert({
+          id: 'shop_main',
+          data: this.data,
+          updated_at: new Date().toISOString(),
+        });
+
+      if (error) {
+        console.error('Supabase push error:', error);
+        this.setSyncStatus('error');
+        return false;
+      }
+
+      this.setSyncStatus('synced');
+      return true;
+    } catch (err) {
+      console.error('Failed to push to Supabase', err);
+      this.setSyncStatus('error');
+      return false;
+    }
+  }
+
+  private scheduleCloudSync(): void {
+    if (!isSupabaseConfigured || !supabase) return;
+    if (this.syncDebounceTimer) {
+      clearTimeout(this.syncDebounceTimer);
+    }
+    this.syncDebounceTimer = setTimeout(() => {
+      this.pushToCloud();
+    }, 1500);
   }
 
   private loadFromStorage(): ERPStoreData {
@@ -296,6 +414,7 @@ class ERPDataStore {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
       this.notifyListeners();
+      this.scheduleCloudSync();
     } catch (e) {
       console.error('Failed to save to localStorage', e);
     }

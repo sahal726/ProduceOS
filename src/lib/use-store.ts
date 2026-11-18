@@ -1,9 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { dataStore, ERPStoreData } from './data-store';
+import { dataStore, ERPStoreData, SyncStatus } from './data-store';
 
 export function useStore(): ERPStoreData & {
+  syncStatus: SyncStatus;
+  pullFromCloud: () => Promise<boolean>;
+  pushToCloud: () => Promise<boolean>;
   addProduct: typeof dataStore.addProduct;
   updateProduct: typeof dataStore.updateProduct;
   addFarmer: typeof dataStore.addFarmer;
@@ -27,19 +30,25 @@ export function useStore(): ERPStoreData & {
   resetToDemo: typeof dataStore.resetToDemo;
 } {
   const [data, setData] = useState<ERPStoreData>(dataStore.getData());
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(dataStore.getSyncStatus());
 
   useEffect(() => {
     // Initial sync
     setData(dataStore.getData());
+    setSyncStatus(dataStore.getSyncStatus());
     // Subscribe to changes
     const unsubscribe = dataStore.subscribe(() => {
       setData({ ...dataStore.getData() });
+      setSyncStatus(dataStore.getSyncStatus());
     });
     return () => unsubscribe();
   }, []);
 
   return {
     ...data,
+    syncStatus,
+    pullFromCloud: dataStore.pullFromCloud.bind(dataStore),
+    pushToCloud: dataStore.pushToCloud.bind(dataStore),
     addProduct: dataStore.addProduct.bind(dataStore),
     updateProduct: dataStore.updateProduct.bind(dataStore),
     addFarmer: dataStore.addFarmer.bind(dataStore),
