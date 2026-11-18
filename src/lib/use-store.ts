@@ -28,6 +28,7 @@ export function useStore(): ERPStoreData & {
   exportDataJSON: typeof dataStore.exportDataJSON;
   importDataJSON: typeof dataStore.importDataJSON;
   resetToDemo: typeof dataStore.resetToDemo;
+  clearAllForLiveTesting: typeof dataStore.clearAllForLiveTesting;
 } {
   const [data, setData] = useState<ERPStoreData>(dataStore.getData());
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(dataStore.getSyncStatus());
@@ -70,5 +71,6 @@ export function useStore(): ERPStoreData & {
     exportDataJSON: dataStore.exportDataJSON.bind(dataStore),
     importDataJSON: dataStore.importDataJSON.bind(dataStore),
     resetToDemo: dataStore.resetToDemo.bind(dataStore),
+    clearAllForLiveTesting: dataStore.clearAllForLiveTesting.bind(dataStore),
   };
 }

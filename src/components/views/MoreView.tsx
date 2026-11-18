@@ -75,6 +75,7 @@ export const MoreView: React.FC = () => {
     exportDataJSON,
     importDataJSON,
     resetToDemo,
+    clearAllForLiveTesting,
     syncStatus,
     pullFromCloud,
     pushToCloud,
@@ -1392,18 +1393,26 @@ export const MoreView: React.FC = () => {
               </label>
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                if (confirm('Reset Shop ERP to default demo data? All current changes will be restored to clean demo state.')) {
-                  resetToDemo();
-                  alert('Reset complete!');
-                }
-              }}
-              className="mt-2 text-xs text-rose-600 hover:text-rose-800 font-semibold text-center py-2"
-            >
-              Reset to Initial Demo State
-            </button>
+            <div className="pt-2 border-t border-slate-100 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  if (
+                    confirm(
+                      'DELETE ALL DATA FOR LIVE TESTING?\n\nThis will permanently delete all test purchases, sales, expenses, farmers, and party ledgers from BOTH this device and the Supabase cloud database.\n\nAre you sure you want to proceed?'
+                    )
+                  ) {
+                    await clearAllForLiveTesting();
+                    alert('All test entries deleted! Clean live testing environment is ready.');
+                    window.location.reload();
+                  }
+                }}
+                className="w-full h-11 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                <span>Wipe All Data (Clean Slate for Live Testing)</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

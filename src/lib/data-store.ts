@@ -14,7 +14,7 @@ import {
 } from '@/types';
 import { supabase, isSupabaseConfigured } from './supabase';
 
-const STORAGE_KEY = 'shop_erp_data_v1';
+const STORAGE_KEY = 'produce_os_live_data_v1';
 const AUTH_KEY = 'shop_erp_auth_pin_unlocked';
 
 export const INITIAL_PRODUCTS: Product[] = [
@@ -41,26 +41,17 @@ export const INITIAL_EXPENSE_CATEGORIES: ExpenseCategory[] = [
   { id: 'cat-other', name: 'Other', is_default: true },
 ];
 
-export const INITIAL_FARMERS: Farmer[] = [
-  { id: 'frm-rajan', name: 'Rajan Pillai', phone: '9847123456', place: 'Koduvally', opening_balance_payable: 2500, is_active: true, created_at: '2026-11-01T00:00:00Z', updated_at: '2026-11-01T00:00:00Z' },
-  { id: 'frm-thomas', name: 'Thomas Kutty', phone: '9447654321', place: 'Thamarassery', opening_balance_payable: 4000, is_active: true, created_at: '2026-11-01T00:00:00Z', updated_at: '2026-11-01T00:00:00Z' },
-  { id: 'frm-moidu', name: 'Moidu Haji', phone: '9895321456', place: 'Mukkam', opening_balance_payable: 0, is_active: true, created_at: '2026-11-01T00:00:00Z', updated_at: '2026-11-01T00:00:00Z' },
-  { id: 'frm-vijayan', name: 'Vijayan Nair', phone: '9496781234', place: 'Kunnamangalam', opening_balance_payable: 1200, is_active: true, created_at: '2026-11-01T00:00:00Z', updated_at: '2026-11-01T00:00:00Z' },
-];
+export const INITIAL_FARMERS: Farmer[] = [];
 
-export const INITIAL_PARTIES: Party[] = [
-  { id: 'pty-malabar', name: 'Malabar Spices Traders', phone: '9846011223', place: 'Calicut Market', opening_balance_receivable: 35000, is_active: true, created_at: '2026-11-01T00:00:00Z', updated_at: '2026-11-01T00:00:00Z' },
-  { id: 'pty-cochin', name: 'Cochin Agro Exports', phone: '9447890123', place: 'Mattancherry', opening_balance_receivable: 85000, is_active: true, created_at: '2026-11-01T00:00:00Z', updated_at: '2026-11-01T00:00:00Z' },
-  { id: 'pty-wayanad', name: 'Wayanad Produce Mart', phone: '9744556677', place: 'Kalpetta', opening_balance_receivable: 12500, is_active: true, created_at: '2026-11-01T00:00:00Z', updated_at: '2026-11-01T00:00:00Z' },
-];
+export const INITIAL_PARTIES: Party[] = [];
 
 export const INITIAL_SETTINGS: Settings = {
-  shop_name: 'Shop ERP',
+  shop_name: 'ProduceOS',
   owner_name: 'Umair',
   phone: '+91 98470 12345',
-  address: 'Koduvally, Kozhikode, Kerala',
-  opening_cash_balance: 35000,
-  opening_bank_balance: 180000,
+  address: 'Kerala, India',
+  opening_cash_balance: 0,
+  opening_bank_balance: 0,
   pin_code: '1234',
   auto_backup_enabled: true,
 };
@@ -82,178 +73,18 @@ export interface ERPStoreData {
 }
 
 export function getDefaultStoreData(): ERPStoreData {
-  const today = new Date().toISOString().slice(0, 10);
-  const samplePurchases: Purchase[] = [
-    {
-      id: 'pur-init-1',
-      date: today,
-      farmer_id: 'frm-rajan',
-      farmer_name: 'Rajan Pillai',
-      total_amount: 14500,
-      paid_amount: 10000,
-      payment_mode: 'cash',
-      balance_payable: 4500,
-      notes: 'Fresh harvest',
-      created_at: `${today}T08:30:00Z`,
-      updated_at: `${today}T08:30:00Z`,
-      items: [
-        {
-          id: 'pi-1',
-          purchase_id: 'pur-init-1',
-          product_id: 'prod-coconut',
-          product_name: 'Coconut',
-          quantity_kg: 250,
-          rate_per_kg: 34,
-          total_amount: 8500,
-          input_unit: 'kg',
-          input_quantity: 250,
-        },
-        {
-          id: 'pi-2',
-          purchase_id: 'pur-init-1',
-          product_id: 'prod-kotta-adakka',
-          product_name: 'Kotta Adakka',
-          quantity_kg: 15,
-          rate_per_kg: 400,
-          total_amount: 6000,
-          input_unit: 'kg',
-          input_quantity: 15,
-        },
-      ],
-    },
-    {
-      id: 'pur-init-2',
-      date: today,
-      farmer_id: 'frm-thomas',
-      farmer_name: 'Thomas Kutty',
-      total_amount: 28500,
-      paid_amount: 28500,
-      payment_mode: 'bank',
-      balance_payable: 0,
-      notes: 'Full payment via UPI',
-      created_at: `${today}T09:15:00Z`,
-      updated_at: `${today}T09:15:00Z`,
-      items: [
-        {
-          id: 'pi-3',
-          purchase_id: 'pur-init-2',
-          product_id: 'prod-kurumulak',
-          product_name: 'Kurumulak',
-          quantity_kg: 45,
-          rate_per_kg: 580,
-          total_amount: 26100,
-          input_unit: 'kg',
-          input_quantity: 45,
-        },
-        {
-          id: 'pi-4',
-          purchase_id: 'pur-init-2',
-          product_id: 'prod-jaathi',
-          product_name: 'Jaathi',
-          quantity_kg: 8,
-          rate_per_kg: 300,
-          total_amount: 2400,
-          input_unit: 'kg',
-          input_quantity: 8,
-        },
-      ],
-    },
-  ];
-
-  const sampleSales: Sale[] = [
-    {
-      id: 'sale-init-1',
-      date: today,
-      party_id: 'pty-malabar',
-      party_name: 'Malabar Spices Traders',
-      total_amount: 32000,
-      received_amount: 20000,
-      payment_mode: 'bank',
-      balance_receivable: 12000,
-      total_cogs: 23200,
-      notes: 'Sold 40kg Kurumulak bulk',
-      created_at: `${today}T11:00:00Z`,
-      updated_at: `${today}T11:00:00Z`,
-      items: [
-        {
-          id: 'si-1',
-          sale_id: 'sale-init-1',
-          product_id: 'prod-kurumulak',
-          product_name: 'Kurumulak',
-          quantity_kg: 40,
-          selling_rate_per_kg: 800,
-          total_amount: 32000,
-          cost_rate_per_kg: 580,
-          cogs_amount: 23200,
-          input_unit: 'quintal',
-          input_quantity: 0.4,
-        },
-      ],
-    },
-  ];
-
-  const sampleLosses: WeightLoss[] = [
-    {
-      id: 'wl-init-1',
-      date: today,
-      product_id: 'prod-kurumulak',
-      product_name: 'Kurumulak',
-      quantity_lost_kg: 1.5,
-      reason: 'Drying',
-      cost_rate_per_kg: 580,
-      total_loss_value: 870,
-      notes: 'After sun drying loss',
-      created_at: `${today}T12:00:00Z`,
-      updated_at: `${today}T12:00:00Z`,
-    },
-  ];
-
-  const sampleExpenses: Expense[] = [
-    {
-      id: 'exp-init-1',
-      date: today,
-      category_id: 'cat-labour',
-      category_name: 'Labour',
-      amount: 1500,
-      payment_mode: 'cash',
-      notes: 'Sorting & weighing labour',
-      created_at: `${today}T13:00:00Z`,
-      updated_at: `${today}T13:00:00Z`,
-    },
-    {
-      id: 'exp-init-2',
-      date: today,
-      category_id: 'cat-transport',
-      category_name: 'Transport',
-      amount: 800,
-      payment_mode: 'cash',
-      notes: 'Local auto freight',
-      created_at: `${today}T14:30:00Z`,
-      updated_at: `${today}T14:30:00Z`,
-    },
-  ];
-
-  const sampleDailyRates: DailyRate[] = [
-    { id: 'dr-1', product_id: 'prod-coconut', rate_date: today, selling_rate_per_kg: 42, created_at: today },
-    { id: 'dr-2', product_id: 'prod-kotta-adakka', rate_date: today, selling_rate_per_kg: 460, created_at: today },
-    { id: 'dr-3', product_id: 'prod-kurumulak', rate_date: today, selling_rate_per_kg: 800, created_at: today },
-    { id: 'dr-4', product_id: 'prod-jaathi', rate_date: today, selling_rate_per_kg: 380, created_at: today },
-    { id: 'dr-5', product_id: 'prod-jaathi-pathri', rate_date: today, selling_rate_per_kg: 1950, created_at: today },
-    { id: 'dr-6', product_id: 'prod-kashu-andi', rate_date: today, selling_rate_per_kg: 720, created_at: today },
-  ];
-
   return {
     products: INITIAL_PRODUCTS,
-    farmers: INITIAL_FARMERS,
-    parties: INITIAL_PARTIES,
-    purchases: samplePurchases,
-    sales: sampleSales,
+    farmers: [],
+    parties: [],
+    purchases: [],
+    sales: [],
     payments: [],
-    expenses: sampleExpenses,
+    expenses: [],
     expense_categories: INITIAL_EXPENSE_CATEGORIES,
-    weight_losses: sampleLosses,
+    weight_losses: [],
     stock_adjustments: [],
-    daily_rates: sampleDailyRates,
+    daily_rates: [],
     settings: INITIAL_SETTINGS,
     last_used_product_id: 'prod-coconut',
   };
@@ -683,6 +514,20 @@ class ERPDataStore {
   public resetToDemo(): void {
     const fresh = getDefaultStoreData();
     this.updateData(() => fresh);
+  }
+
+  public async clearAllForLiveTesting(): Promise<boolean> {
+    const clean = getDefaultStoreData();
+    this.data = clean;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
+      localStorage.removeItem('shop_erp_data_v1');
+    }
+    this.notifyListeners();
+    if (isSupabaseConfigured && supabase) {
+      return await this.pushToCloud();
+    }
+    return true;
   }
 }
 
