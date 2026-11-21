@@ -16,8 +16,11 @@ export function useStore(): ERPStoreData & {
   addPurchase: typeof dataStore.addPurchase;
   deletePurchase: typeof dataStore.deletePurchase;
   addSale: typeof dataStore.addSale;
+  updateSale: typeof dataStore.updateSale;
   deleteSale: typeof dataStore.deleteSale;
   addPayment: typeof dataStore.addPayment;
+  updatePayment: typeof dataStore.updatePayment;
+  deletePayment: typeof dataStore.deletePayment;
   addExpense: typeof dataStore.addExpense;
   deleteExpense: typeof dataStore.deleteExpense;
   addExpenseCategory: typeof dataStore.addExpenseCategory;
@@ -59,8 +62,11 @@ export function useStore(): ERPStoreData & {
     addPurchase: dataStore.addPurchase.bind(dataStore),
     deletePurchase: dataStore.deletePurchase.bind(dataStore),
     addSale: dataStore.addSale.bind(dataStore),
+    updateSale: dataStore.updateSale.bind(dataStore),
     deleteSale: dataStore.deleteSale.bind(dataStore),
     addPayment: dataStore.addPayment.bind(dataStore),
+    updatePayment: dataStore.updatePayment.bind(dataStore),
+    deletePayment: dataStore.deletePayment.bind(dataStore),
     addExpense: dataStore.addExpense.bind(dataStore),
     deleteExpense: dataStore.deleteExpense.bind(dataStore),
     addExpenseCategory: dataStore.addExpenseCategory.bind(dataStore),

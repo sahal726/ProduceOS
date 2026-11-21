@@ -5,8 +5,6 @@ import { useStore } from '@/lib/use-store';
 import { Unit, PaymentMode, SaleItem } from '@/types';
 import { QuantityInput } from '@/components/QuantityInput';
 import {
-  quintalToKg,
-  kgToQuintal,
   formatINR,
   formatQuantity,
   computeProductCostHistory,
@@ -67,10 +65,8 @@ export const SellView: React.FC = () => {
     id: string;
     product_id: string;
     product_name: string;
-    unit: Unit;
     raw_qty: string;
-    rate_unit: Unit; // can enter rate per kg or per quintal!
-    rate_input: string;
+    rate_per_kg: string;
     // Optional weigh-in vs weigh-out
     show_weight_diff: boolean;
     shop_weight_raw: string;
@@ -85,10 +81,8 @@ export const SellView: React.FC = () => {
       id: 's-item-1',
       product_id: initialProd?.id || '',
       product_name: initialProd?.name || '',
-      unit: 'quintal', // sales default to quintal per spec!
       raw_qty: '',
-      rate_unit: 'quintal',
-      rate_input: initialDefaultRate ? (initialDefaultRate * 100).toString() : '',
+      rate_per_kg: initialDefaultRate ? initialDefaultRate.toString() : '',
       show_weight_diff: false,
       shop_weight_raw: '',
       party_weight_raw: '',
@@ -121,16 +115,12 @@ export const SellView: React.FC = () => {
     setItems((prev) =>
       prev.map((i) => {
         if (i.id !== itemId) return i;
-        const rateInput = dayRatePerKg
-          ? i.rate_unit === 'quintal'
-            ? (dayRatePerKg * 100).toString()
-            : dayRatePerKg.toString()
-          : i.rate_input;
+        const ratePerKg = dayRatePerKg ? dayRatePerKg.toString() : i.rate_per_kg;
         return {
           ...i,
           product_id: newProductId,
           product_name: prod?.name || '',
-          rate_input: rateInput,
+          rate_per_kg: ratePerKg,
         };
       })
     );
@@ -145,10 +135,8 @@ export const SellView: React.FC = () => {
         id: `s-item-${Date.now()}`,
         product_id: nextProd?.id || '',
         product_name: nextProd?.name || '',
-        unit: 'quintal',
         raw_qty: '',
-        rate_unit: 'quintal',
-        rate_input: dayRate ? (dayRate * 100).toString() : '',
+        rate_per_kg: dayRate ? dayRate.toString() : '',
         show_weight_diff: false,
         shop_weight_raw: '',
         party_weight_raw: '',
@@ -172,12 +160,8 @@ export const SellView: React.FC = () => {
 
   // Computations
   const computedItems = items.map((it) => {
-    const rawQty = parseFloat(it.raw_qty) || 0;
-    const qtyKg = it.unit === 'quintal' ? quintalToKg(rawQty) : rawQty;
-
-    const rateVal = parseFloat(it.rate_input) || 0;
-    const ratePerKg = it.rate_unit === 'quintal' ? rateVal / 100 : rateVal;
-
+    const qtyKg = parseFloat(it.raw_qty) || 0;
+    const ratePerKg = parseFloat(it.rate_per_kg) || 0;
     const lineTotal = Number((qtyKg * ratePerKg).toFixed(2));
 
     // Stock & Cost
@@ -264,7 +248,7 @@ export const SellView: React.FC = () => {
         if (!ratePerKg) return it;
         return {
           ...it,
-          rate_input: it.rate_unit === 'quintal' ? (ratePerKg * 100).toString() : ratePerKg.toString(),
+          rate_per_kg: ratePerKg.toString(),
         };
       })
     );
@@ -300,7 +284,7 @@ export const SellView: React.FC = () => {
       total_amount: vl.lineTotal,
       cost_rate_per_kg: vl.weightedAvgCost,
       cogs_amount: vl.cogsAmount,
-      input_unit: vl.item.unit,
+      input_unit: 'kg',
       input_quantity: parseFloat(vl.item.raw_qty) || 0,
       shop_weight_kg: vl.item.show_weight_diff ? parseFloat(vl.item.shop_weight_raw) : undefined,
       party_weight_kg: vl.item.show_weight_diff ? parseFloat(vl.item.party_weight_raw) : undefined,
@@ -346,10 +330,8 @@ export const SellView: React.FC = () => {
         id: `s-item-${Date.now()}`,
         product_id: initialProd?.id || '',
         product_name: initialProd?.name || '',
-        unit: 'quintal',
         raw_qty: '',
-        rate_unit: 'quintal',
-        rate_input: initialDefaultRate ? (initialDefaultRate * 100).toString() : '',
+        rate_per_kg: initialDefaultRate ? initialDefaultRate.toString() : '',
         show_weight_diff: false,
         shop_weight_raw: '',
         party_weight_raw: '',
@@ -482,7 +464,7 @@ export const SellView: React.FC = () => {
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
         <div className="flex items-center justify-between mb-3">
           <label className="text-xs font-bold uppercase tracking-wider text-slate-600">
-            Sale Items (Default: Quintal)
+            Sale Items
           </label>
           <button
             type="button"
@@ -537,73 +519,31 @@ export const SellView: React.FC = () => {
 
                 {/* Quantity */}
                 <QuantityInput
-                  label="Quantity Sold"
-                  unit={it.unit}
-                  onUnitChange={(newUnit) => handleUpdateItem(it.id, { unit: newUnit })}
+                  label="Quantity Sold (KG)"
                   rawQuantity={it.raw_qty}
                   onQuantityChange={(val) => handleUpdateItem(it.id, { raw_qty: val })}
-                  placeholder="e.g. 5 (qtl) or 500 (kg)"
+                  placeholder="e.g. 50 or 500"
                   required
                 />
 
-                {/* Selling Rate (Support per Quintal or per KG) */}
+                {/* Selling Rate (per KG) */}
                 <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-bold text-slate-700 uppercase">
-                      Selling Rate
-                    </label>
-                    <div className="flex items-center bg-slate-200/80 p-0.5 rounded-lg text-[10px] font-semibold">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const currentVal = parseFloat(it.rate_input) || 0;
-                          handleUpdateItem(it.id, {
-                            rate_unit: 'quintal',
-                            rate_input: it.rate_unit === 'kg' ? (currentVal * 100).toString() : it.rate_input,
-                          });
-                        }}
-                        className={`px-2 py-0.5 rounded-md ${
-                          it.rate_unit === 'quintal' ? 'bg-white text-blue-700 shadow-2xs font-bold' : 'text-slate-600'
-                        }`}
-                      >
-                        per Qtl
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const currentVal = parseFloat(it.rate_input) || 0;
-                          handleUpdateItem(it.id, {
-                            rate_unit: 'kg',
-                            rate_input: it.rate_unit === 'quintal' ? (currentVal / 100).toString() : it.rate_input,
-                          });
-                        }}
-                        className={`px-2 py-0.5 rounded-md ${
-                          it.rate_unit === 'kg' ? 'bg-white text-blue-700 shadow-2xs font-bold' : 'text-slate-600'
-                        }`}
-                      >
-                        per KG
-                      </button>
-                    </div>
-                  </div>
-
+                  <label className="text-xs font-bold text-slate-700 uppercase">
+                    Selling Rate per KG (₹) <span className="text-rose-500">*</span>
+                  </label>
                   <input
                     type="text"
                     inputMode="decimal"
-                    placeholder={it.rate_unit === 'quintal' ? 'e.g. 80000 per qtl' : 'e.g. 800 per kg'}
-                    value={it.rate_input}
+                    placeholder="e.g. 800"
+                    value={it.rate_per_kg}
                     onChange={(e) => {
                       const val = e.target.value;
                       if (/^\d*\.?\d*$/.test(val)) {
-                        handleUpdateItem(it.id, { rate_input: val });
+                        handleUpdateItem(it.id, { rate_per_kg: val });
                       }
                     }}
-                    className="w-full h-11 px-3 text-base font-bold text-slate-900 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                    className="w-full h-11 mt-1 px-3 text-base font-bold text-slate-900 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"
                   />
-
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 mt-1 px-1">
-                    <span>Effective Rate per KG:</span>
-                    <span className="font-bold text-slate-700">₹{computed.ratePerKg.toFixed(2)}/kg</span>
-                  </div>
                 </div>
 
                 {/* Optional Weigh-in vs Weigh-out toggle */}

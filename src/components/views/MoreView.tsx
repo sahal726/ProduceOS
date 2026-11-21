@@ -9,8 +9,6 @@ import {
   computeCashBook,
   formatINR,
   formatQuantity,
-  kgToQuintal,
-  quintalToKg,
 } from '@/lib/calculations';
 import { LossReason, PaymentMode } from '@/types';
 import {
@@ -501,7 +499,7 @@ export const MoreView: React.FC = () => {
           <div>
             <h1 className="text-lg font-black text-slate-900 tracking-tight">Stock & Valuation</h1>
             <p className="text-xs text-slate-500">
-              Live quantities in KG and Quintals with weighted average cost
+              Live quantities in KG with weighted average cost
             </p>
           </div>
 

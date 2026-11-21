@@ -23,6 +23,9 @@ import {
   ShoppingCart,
   Send,
   Package,
+  Pencil,
+  Trash2,
+  CheckCircle2,
 } from 'lucide-react';
 import { Modal } from '@/components/Modal';
 import { PaymentMode } from '@/types';
@@ -45,6 +48,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab, onO
     stock_adjustments,
     settings,
     addPayment,
+    updatePayment,
+    deletePayment,
     addExpense,
     expense_categories,
   } = useStore();
@@ -121,6 +126,40 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab, onO
   const [expMode, setExpMode] = useState<PaymentMode>('cash');
   const [expNote, setExpNote] = useState<string>('');
 
+  // Edit Payment state
+  interface EditPaymentState {
+    id: string;
+    entityName: string;
+    entityType: 'party' | 'farmer';
+    amount: string;
+    date: string;
+    mode: PaymentMode;
+    notes: string;
+  }
+  const [editingPayment, setEditingPayment] = useState<EditPaymentState | null>(null);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
+
+  const handleSaveEditPayment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPayment) return;
+    const amt = parseFloat(editingPayment.amount);
+    if (isNaN(amt) || amt <= 0) {
+      alert('Please enter a valid amount');
+      return;
+    }
+
+    updatePayment(editingPayment.id, {
+      amount: amt,
+      date: editingPayment.date,
+      payment_mode: editingPayment.mode,
+      notes: editingPayment.notes.trim() || undefined,
+    });
+
+    setSuccessToast(`Payment updated to ${formatINR(amt)} successfully!`);
+    setTimeout(() => setSuccessToast(null), 3000);
+    setEditingPayment(null);
+  };
+
   const handleSaveReceivePayment = (e: React.FormEvent) => {
     e.preventDefault();
     const amt = parseFloat(receiveAmount);
@@ -186,6 +225,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab, onO
 
   return (
     <div className="flex flex-col gap-5 pb-8">
+      {/* Toast Notification */}
+      {successToast && (
+        <div className="sticky top-14 z-30 bg-emerald-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2 animate-in slide-in-from-top duration-200">
+          <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+          <span>{successToast}</span>
+        </div>
+      )}
+
       {/* 4 TOP CARDS */}
       <div className="grid grid-cols-2 gap-3">
         {/* Cash in Hand */}
@@ -487,6 +534,108 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab, onO
         </div>
       </div>
 
+      {/* RECENT PAYMENTS / RECEIPTS SECTION */}
+      {payments.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+              Recent Payments ({payments.length})
+            </span>
+            <button
+              type="button"
+              onClick={() => onNavigateTab('ledgers')}
+              className="text-[11px] text-emerald-700 font-semibold hover:underline"
+            >
+              All Payments →
+            </button>
+          </div>
+
+          <div className="divide-y divide-slate-100">
+            {payments.slice(0, 5).map((p) => (
+              <div key={p.id} className="py-2.5 flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                        p.direction === 'in'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-rose-100 text-rose-800'
+                      }`}
+                    >
+                      {p.direction === 'in' ? 'Received (Party)' : 'Paid (Farmer)'}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-medium">{p.date}</span>
+                    <span className="bg-slate-100 text-slate-600 font-semibold px-1 rounded uppercase text-[9px]">
+                      {p.payment_mode}
+                    </span>
+                  </div>
+
+                  <div className="text-xs font-bold text-slate-900 mt-1 truncate">
+                    {p.entity_name}
+                  </div>
+                  {p.notes && (
+                    <div className="text-[10px] text-slate-400 truncate mt-0.5">{p.notes}</div>
+                  )}
+                </div>
+
+                <div className="text-right shrink-0 flex flex-col items-end">
+                  <div
+                    className={`text-xs font-black ${
+                      p.direction === 'in' ? 'text-emerald-700' : 'text-rose-600'
+                    }`}
+                  >
+                    {p.direction === 'in' ? '+' : '-'}
+                    {formatINR(p.amount)}
+                  </div>
+
+                  <div className="flex items-center gap-1 mt-1.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditingPayment({
+                          id: p.id,
+                          entityName: p.entity_name,
+                          entityType: p.entity_type,
+                          amount: p.amount.toString(),
+                          date: p.date,
+                          mode: p.payment_mode,
+                          notes: p.notes || '',
+                        })
+                      }
+                      className="px-2 py-0.5 text-[10px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 flex items-center gap-1 transition-colors"
+                      title="Edit payment"
+                    >
+                      <Pencil className="w-2.5 h-2.5" />
+                      <span>Edit</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (
+                          confirm(
+                            `Delete payment of ${formatINR(p.amount)} from ${p.entity_name}?`
+                          )
+                        ) {
+                          deletePayment(p.id);
+                          setSuccessToast(`Payment deleted successfully!`);
+                          setTimeout(() => setSuccessToast(null), 3000);
+                        }
+                      }}
+                      className="px-2 py-0.5 text-[10px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded border border-rose-200 flex items-center gap-1 transition-colors"
+                      title="Delete payment"
+                    >
+                      <Trash2 className="w-2.5 h-2.5" />
+                      <span>Delete</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* QUICK MODAL: RECEIVE PAYMENT */}
       <Modal
         isOpen={quickModal === 'receive_payment'}
@@ -734,6 +883,121 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab, onO
             Save Expense
           </button>
         </form>
+      </Modal>
+
+      {/* EDIT PAYMENT MODAL */}
+      <Modal
+        isOpen={!!editingPayment}
+        onClose={() => setEditingPayment(null)}
+        title={`Edit Payment (${editingPayment?.entityName || 'Payment'})`}
+      >
+        {editingPayment && (
+          <form onSubmit={handleSaveEditPayment} className="flex flex-col gap-4">
+            <div>
+              <span className="text-xs font-semibold text-slate-500">
+                {editingPayment.entityType === 'party' ? 'Customer / Party' : 'Farmer / Supplier'}
+              </span>
+              <div className="text-sm font-black text-slate-900 mt-0.5">
+                {editingPayment.entityName}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700">Payment Date</label>
+              <input
+                type="date"
+                value={editingPayment.date}
+                onChange={(e) =>
+                  setEditingPayment({ ...editingPayment, date: e.target.value })
+                }
+                className="w-full h-11 mt-1 px-3 border border-slate-300 rounded-xl font-bold text-sm bg-white"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700">
+                Amount Received / Paid (₹) <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={editingPayment.amount}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (/^\d*\.?\d*$/.test(val)) {
+                    setEditingPayment({ ...editingPayment, amount: val });
+                  }
+                }}
+                placeholder="e.g. 50000"
+                required
+                autoFocus
+                className="w-full h-12 mt-1 px-3 text-lg font-bold border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700">Payment Mode</label>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEditingPayment({ ...editingPayment, mode: 'cash' })
+                  }
+                  className={`py-2 text-xs font-bold rounded-xl border ${
+                    editingPayment.mode === 'cash'
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-white text-slate-700 border-slate-300'
+                  }`}
+                >
+                  Cash
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEditingPayment({ ...editingPayment, mode: 'bank' })
+                  }
+                  className={`py-2 text-xs font-bold rounded-xl border ${
+                    editingPayment.mode === 'bank'
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-slate-700 border-slate-300'
+                  }`}
+                >
+                  Bank / UPI
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700">Note / Reference (Optional)</label>
+              <input
+                type="text"
+                value={editingPayment.notes}
+                onChange={(e) =>
+                  setEditingPayment({ ...editingPayment, notes: e.target.value })
+                }
+                placeholder="Cheque no. / UPI ref / Notes"
+                className="w-full h-10 mt-1 px-3 border border-slate-300 rounded-xl text-sm"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <button
+                type="button"
+                onClick={() => setEditingPayment(null)}
+                className="w-full h-12 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl active:scale-98 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl active:scale-98 transition-all shadow-xs"
+              >
+                Save Changes
+              </button>
+            </div>
+          </form>
+        )}
       </Modal>
     </div>
   );

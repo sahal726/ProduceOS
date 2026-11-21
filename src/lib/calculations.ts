@@ -29,13 +29,12 @@ export function quintalToKg(quintal: number): number {
 }
 
 /**
- * Format quantity showing both kg and quintal equivalent
- * e.g. "520 kg (5.2 qtl)"
+ * Format quantity in kg
+ * e.g. "520 kg"
  */
 export function formatQuantity(kg: number): string {
   const safeKg = Number((kg || 0).toFixed(2));
-  const qtl = Number((safeKg / 100).toFixed(2));
-  return `${safeKg.toLocaleString('en-IN')} kg (${qtl} qtl)`;
+  return `${safeKg.toLocaleString('en-IN')} kg`;
 }
 
 /**

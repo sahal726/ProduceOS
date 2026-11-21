@@ -20,6 +20,9 @@ import {
   ArrowLeft,
   Send,
   Filter,
+  Pencil,
+  Trash2,
+  CheckCircle2,
 } from 'lucide-react';
 import { Modal } from '@/components/Modal';
 import jsPDF from 'jspdf';
@@ -41,12 +44,15 @@ export const LedgersView: React.FC<LedgersViewProps> = ({
     payments,
     settings,
     addPayment,
+    updatePayment,
+    deletePayment,
+    updateSale,
   } = useStore();
 
   const todayStr = new Date().toISOString().slice(0, 10);
 
-  // Tab: 'parties' | 'farmers'
-  const [activeSegment, setActiveSegment] = useState<'parties' | 'farmers'>(
+  // Tab: 'parties' | 'farmers' | 'payments'
+  const [activeSegment, setActiveSegment] = useState<'parties' | 'farmers' | 'payments'>(
     initialType === 'farmer' ? 'farmers' : 'parties'
   );
 
@@ -68,6 +74,21 @@ export const LedgersView: React.FC<LedgersViewProps> = ({
   const [payDate, setPayDate] = useState<string>(todayStr);
   const [payMode, setPayMode] = useState<PaymentMode>('cash');
   const [payNote, setPayNote] = useState<string>('');
+
+  // Edit Payment State
+  interface EditPaymentState {
+    id: string;
+    reference_id: string;
+    isSaleReceipt: boolean;
+    entityName: string;
+    entityType: 'party' | 'farmer';
+    amount: string;
+    date: string;
+    mode: PaymentMode;
+    notes: string;
+  }
+  const [editingPayment, setEditingPayment] = useState<EditPaymentState | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // 1. Compute Party Ledgers
   const partyLedgers = parties
@@ -163,6 +184,118 @@ export const LedgersView: React.FC<LedgersViewProps> = ({
     setIsPaymentModalOpen(false);
   };
 
+  const handleOpenEditPayment = (
+    entryOrPay: { id: string; reference_id?: string; date: string; amount?: number; debit?: number; credit?: number; mode?: PaymentMode; notes?: string },
+    entityType: 'party' | 'farmer',
+    entityName: string
+  ) => {
+    const standalonePay = payments.find((p) => p.id === entryOrPay.reference_id || p.id === entryOrPay.id);
+    if (standalonePay) {
+      setEditingPayment({
+        id: standalonePay.id,
+        reference_id: standalonePay.id,
+        isSaleReceipt: false,
+        entityName,
+        entityType,
+        amount: standalonePay.amount.toString(),
+        date: standalonePay.date,
+        mode: standalonePay.payment_mode,
+        notes: standalonePay.notes || '',
+      });
+      return;
+    }
+
+    const saleId = entryOrPay.reference_id || entryOrPay.id.replace('rec-', '');
+    const saleItem = sales.find((s) => s.id === saleId);
+    if (saleItem) {
+      setEditingPayment({
+        id: saleItem.id,
+        reference_id: saleItem.id,
+        isSaleReceipt: true,
+        entityName,
+        entityType: 'party',
+        amount: saleItem.received_amount.toString(),
+        date: saleItem.date,
+        mode: saleItem.payment_mode,
+        notes: saleItem.notes || '',
+      });
+      return;
+    }
+
+    const amt = entryOrPay.amount || entryOrPay.credit || entryOrPay.debit || 0;
+    setEditingPayment({
+      id: entryOrPay.id,
+      reference_id: entryOrPay.reference_id || entryOrPay.id,
+      isSaleReceipt: false,
+      entityName,
+      entityType,
+      amount: amt.toString(),
+      date: entryOrPay.date,
+      mode: entryOrPay.mode || 'cash',
+      notes: entryOrPay.notes || '',
+    });
+  };
+
+  const handleSaveEditPayment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPayment) return;
+    const amt = parseFloat(editingPayment.amount);
+    if (isNaN(amt) || amt <= 0) {
+      alert('Please enter a valid amount');
+      return;
+    }
+
+    if (editingPayment.isSaleReceipt) {
+      updateSale(editingPayment.id, {
+        received_amount: amt,
+        date: editingPayment.date,
+        payment_mode: editingPayment.mode,
+      });
+    } else {
+      updatePayment(editingPayment.id, {
+        amount: amt,
+        date: editingPayment.date,
+        payment_mode: editingPayment.mode,
+        notes: editingPayment.notes.trim() || undefined,
+      });
+    }
+
+    setToastMessage(`Payment updated to ${formatINR(amt)} successfully!`);
+    setTimeout(() => setToastMessage(null), 3000);
+    setEditingPayment(null);
+  };
+
+  const handleDeletePayment = (
+    entryOrPay: { id: string; reference_id?: string; amount?: number; debit?: number; credit?: number },
+    entityName: string
+  ) => {
+    const amt = entryOrPay.amount || entryOrPay.credit || entryOrPay.debit || 0;
+    if (!confirm(`Are you sure you want to delete this payment of ${formatINR(amt)} from ${entityName}?`)) {
+      return;
+    }
+
+    const standalonePay = payments.find((p) => p.id === entryOrPay.reference_id || p.id === entryOrPay.id);
+    if (standalonePay) {
+      deletePayment(standalonePay.id);
+      setToastMessage(`Payment of ${formatINR(amt)} deleted successfully!`);
+      setTimeout(() => setToastMessage(null), 3000);
+      return;
+    }
+
+    const saleId = entryOrPay.reference_id || entryOrPay.id.replace('rec-', '');
+    const saleItem = sales.find((s) => s.id === saleId);
+    if (saleItem) {
+      updateSale(saleItem.id, { received_amount: 0 });
+      setToastMessage(`Sale payment of ${formatINR(amt)} deleted successfully!`);
+      setTimeout(() => setToastMessage(null), 3000);
+      return;
+    }
+
+    deletePayment(entryOrPay.id);
+    setToastMessage(`Payment deleted successfully!`);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
   // WhatsApp Statement Share
   const handleShareWhatsApp = () => {
     if (selectedEntity?.type === 'party' && currentPartyItem) {
@@ -256,8 +389,34 @@ Total Amount Paid: ${formatCurrency(currentFarmerItem.totalPaid)}
     doc.save(`${name || 'statement'}_ledger_${todayStr}.pdf`);
   };
 
+  // 3. Filtered Payments for All Payments tab
+  const filteredPayments = payments
+    .filter((pay) => {
+      const q = search.toLowerCase();
+      if (!q) return true;
+      return (
+        pay.entity_name.toLowerCase().includes(q) ||
+        (pay.notes && pay.notes.toLowerCase().includes(q)) ||
+        pay.date.includes(q) ||
+        pay.amount.toString().includes(q) ||
+        pay.payment_mode.toLowerCase().includes(q)
+      );
+    })
+    .sort((a, b) => {
+      if (a.date !== b.date) return b.date.localeCompare(a.date);
+      return (b.created_at || '').localeCompare(a.created_at || '');
+    });
+
   return (
     <div className="flex flex-col gap-4 pb-12">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="sticky top-14 z-30 bg-emerald-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2 animate-in slide-in-from-top duration-200">
+          <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
       {/* If an entity is selected, show its full Statement View */}
       {selectedEntity ? (
         <div className="flex flex-col gap-4">
@@ -424,6 +583,45 @@ Total Amount Paid: ${formatCurrency(currentFarmerItem.totalPaid)}
                           </div>
                         </>
                       )}
+
+                      {entry.reference_type === 'payment' && (
+                        <div className="flex items-center gap-1.5 mt-1.5 justify-end">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleOpenEditPayment(
+                                entry,
+                                selectedEntity.type,
+                                selectedEntity.type === 'party'
+                                  ? currentPartyItem?.party.name || 'Party'
+                                  : currentFarmerItem?.farmer.name || 'Farmer'
+                              )
+                            }
+                            className="px-2 py-0.5 text-[10px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200 flex items-center gap-1 transition-colors"
+                            title="Edit payment"
+                          >
+                            <Pencil className="w-2.5 h-2.5" />
+                            <span>Edit</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleDeletePayment(
+                                entry,
+                                selectedEntity.type === 'party'
+                                  ? currentPartyItem?.party.name || 'Party'
+                                  : currentFarmerItem?.farmer.name || 'Farmer'
+                              )
+                            }
+                            className="px-2 py-0.5 text-[10px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-md border border-rose-200 flex items-center gap-1 transition-colors"
+                            title="Delete payment"
+                          >
+                            <Trash2 className="w-2.5 h-2.5" />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -441,7 +639,7 @@ Total Amount Paid: ${formatCurrency(currentFarmerItem.totalPaid)}
           </div>
 
           {/* Segmented Control */}
-          <div className="grid grid-cols-2 bg-slate-100 p-1 rounded-xl border border-slate-200">
+          <div className="grid grid-cols-3 bg-slate-100 p-1 rounded-xl border border-slate-200">
             <button
               type="button"
               onClick={() => setActiveSegment('parties')}
@@ -451,7 +649,7 @@ Total Amount Paid: ${formatCurrency(currentFarmerItem.totalPaid)}
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Parties (Receivables)
+              Parties (Due)
             </button>
             <button
               type="button"
@@ -462,7 +660,18 @@ Total Amount Paid: ${formatCurrency(currentFarmerItem.totalPaid)}
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Farmers (Payables)
+              Farmers (Due)
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveSegment('payments')}
+              className={`py-2 text-xs font-extrabold rounded-lg transition-all ${
+                activeSegment === 'payments'
+                  ? 'bg-white text-blue-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              All Payments
             </button>
           </div>
 
@@ -475,7 +684,9 @@ Total Amount Paid: ${formatCurrency(currentFarmerItem.totalPaid)}
                 placeholder={
                   activeSegment === 'parties'
                     ? 'Search parties by name/market...'
-                    : 'Search farmers by name/place...'
+                    : activeSegment === 'farmers'
+                    ? 'Search farmers by name/place...'
+                    : 'Search payments by party, note, amount...'
                 }
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -483,18 +694,20 @@ Total Amount Paid: ${formatCurrency(currentFarmerItem.totalPaid)}
               />
             </div>
 
-            <button
-              type="button"
-              onClick={() => setOnlyHasBalance((prev) => !prev)}
-              className={`px-3 h-10 rounded-xl text-xs font-bold border flex items-center gap-1 transition-colors ${
-                onlyHasBalance
-                  ? 'bg-emerald-600 text-white border-emerald-600'
-                  : 'bg-white text-slate-700 border-slate-300'
-              }`}
-            >
-              <Filter className="w-3.5 h-3.5" />
-              <span>Has Balance</span>
-            </button>
+            {activeSegment !== 'payments' && (
+              <button
+                type="button"
+                onClick={() => setOnlyHasBalance((prev) => !prev)}
+                className={`px-3 h-10 rounded-xl text-xs font-bold border flex items-center gap-1 transition-colors ${
+                  onlyHasBalance
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-white text-slate-700 border-slate-300'
+                }`}
+              >
+                <Filter className="w-3.5 h-3.5" />
+                <span>Has Balance</span>
+              </button>
+            )}
           </div>
 
           {/* LIST */}
@@ -532,37 +745,117 @@ Total Amount Paid: ${formatCurrency(currentFarmerItem.totalPaid)}
                   ))}
                 </div>
               )
-            ) : farmerLedgers.length === 0 ? (
-              <p className="text-xs text-slate-400 py-6 text-center">No farmers found</p>
-            ) : (
-              <div className="divide-y divide-slate-100">
-                {farmerLedgers.map((item) => (
-                  <div
-                    key={item.farmer.id}
-                    onClick={() => setSelectedEntity({ type: 'farmer', id: item.farmer.id })}
-                    className="py-3 px-2 flex items-center justify-between hover:bg-slate-50 active:bg-slate-100 rounded-xl cursor-pointer transition-colors"
-                  >
-                    <div className="truncate mr-3">
-                      <div className="text-xs font-bold text-slate-900">{item.farmer.name}</div>
-                      <div className="text-[10px] text-slate-400">
-                        {item.farmer.place || 'Farmer'} • Bought: {formatINR(item.totalPurchased)}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      <div className="text-right">
-                        <div className="text-xs font-black text-rose-600">
-                          {formatINR(item.payable)}
+            ) : activeSegment === 'farmers' ? (
+              farmerLedgers.length === 0 ? (
+                <p className="text-xs text-slate-400 py-6 text-center">No farmers found</p>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {farmerLedgers.map((item) => (
+                    <div
+                      key={item.farmer.id}
+                      onClick={() => setSelectedEntity({ type: 'farmer', id: item.farmer.id })}
+                      className="py-3 px-2 flex items-center justify-between hover:bg-slate-50 active:bg-slate-100 rounded-xl cursor-pointer transition-colors"
+                    >
+                      <div className="truncate mr-3">
+                        <div className="text-xs font-bold text-slate-900">{item.farmer.name}</div>
+                        <div className="text-[10px] text-slate-400">
+                          {item.farmer.place || 'Farmer'} • Bought: {formatINR(item.totalPurchased)}
                         </div>
-                        <span className="text-[9px] text-slate-400 font-semibold uppercase">
-                          We Owe
-                        </span>
                       </div>
-                      <ChevronRight className="w-4 h-4 text-slate-400" />
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <div className="text-right">
+                          <div className="text-xs font-black text-rose-600">
+                            {formatINR(item.payable)}
+                          </div>
+                          <span className="text-[9px] text-slate-400 font-semibold uppercase">
+                            We Owe
+                          </span>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-400" />
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )
+            ) : (
+              /* ALL PAYMENTS TAB */
+              filteredPayments.length === 0 ? (
+                <p className="text-xs text-slate-400 py-6 text-center">No payments recorded yet</p>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {filteredPayments.map((pay) => (
+                    <div
+                      key={pay.id}
+                      className="py-3 px-2 flex items-start justify-between gap-3 hover:bg-slate-50 rounded-xl transition-colors"
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                              pay.direction === 'in'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-rose-100 text-rose-800'
+                            }`}
+                          >
+                            {pay.direction === 'in' ? 'Received (Party)' : 'Paid (Farmer)'}
+                          </span>
+                          <span className="text-[11px] text-slate-400 font-medium">
+                            {pay.date}
+                          </span>
+                          <span className="bg-slate-100 text-slate-600 font-semibold px-1 rounded uppercase text-[9px]">
+                            {pay.payment_mode}
+                          </span>
+                        </div>
+
+                        <div className="text-xs font-bold text-slate-900 mt-1">
+                          {pay.entity_name}
+                        </div>
+                        {pay.notes && (
+                          <div className="text-[11px] text-slate-500 mt-0.5">
+                            {pay.notes}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="text-right shrink-0 flex flex-col items-end">
+                        <div
+                          className={`text-sm font-black ${
+                            pay.direction === 'in' ? 'text-emerald-700' : 'text-rose-600'
+                          }`}
+                        >
+                          {pay.direction === 'in' ? '+' : '-'}
+                          {formatINR(pay.amount)}
+                        </div>
+
+                        <div className="flex items-center gap-1.5 mt-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleOpenEditPayment(pay, pay.entity_type, pay.entity_name)
+                            }
+                            className="px-2 py-1 text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 flex items-center gap-1 transition-colors"
+                            title="Edit this payment"
+                          >
+                            <Pencil className="w-3 h-3" />
+                            <span>Edit</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePayment(pay, pay.entity_name)}
+                            className="px-2 py-1 text-[11px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200 flex items-center gap-1 transition-colors"
+                            title="Delete this payment"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
             )}
           </div>
         </div>
@@ -653,6 +946,121 @@ Total Amount Paid: ${formatCurrency(currentFarmerItem.totalPaid)}
             {selectedEntity?.type === 'party' ? 'Confirm Receipt' : 'Confirm Payment'}
           </button>
         </form>
+      </Modal>
+
+      {/* EDIT PAYMENT MODAL */}
+      <Modal
+        isOpen={!!editingPayment}
+        onClose={() => setEditingPayment(null)}
+        title={`Edit Payment (${editingPayment?.entityName || 'Payment'})`}
+      >
+        {editingPayment && (
+          <form onSubmit={handleSaveEditPayment} className="flex flex-col gap-4">
+            <div>
+              <span className="text-xs font-semibold text-slate-500">
+                {editingPayment.entityType === 'party' ? 'Customer / Party' : 'Farmer / Supplier'}
+              </span>
+              <div className="text-sm font-black text-slate-900 mt-0.5">
+                {editingPayment.entityName}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700">Payment Date</label>
+              <input
+                type="date"
+                value={editingPayment.date}
+                onChange={(e) =>
+                  setEditingPayment({ ...editingPayment, date: e.target.value })
+                }
+                className="w-full h-11 mt-1 px-3 border border-slate-300 rounded-xl font-bold text-sm bg-white"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700">
+                Amount Received / Paid (₹) <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={editingPayment.amount}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (/^\d*\.?\d*$/.test(val)) {
+                    setEditingPayment({ ...editingPayment, amount: val });
+                  }
+                }}
+                placeholder="e.g. 50000"
+                required
+                autoFocus
+                className="w-full h-12 mt-1 px-3 text-lg font-bold border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700">Payment Mode</label>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEditingPayment({ ...editingPayment, mode: 'cash' })
+                  }
+                  className={`py-2 text-xs font-bold rounded-xl border ${
+                    editingPayment.mode === 'cash'
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-white text-slate-700 border-slate-300'
+                  }`}
+                >
+                  Cash
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEditingPayment({ ...editingPayment, mode: 'bank' })
+                  }
+                  className={`py-2 text-xs font-bold rounded-xl border ${
+                    editingPayment.mode === 'bank'
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-slate-700 border-slate-300'
+                  }`}
+                >
+                  Bank / UPI
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700">Note / Reference (Optional)</label>
+              <input
+                type="text"
+                value={editingPayment.notes}
+                onChange={(e) =>
+                  setEditingPayment({ ...editingPayment, notes: e.target.value })
+                }
+                placeholder="Cheque no. / UPI ref / Notes"
+                className="w-full h-10 mt-1 px-3 border border-slate-300 rounded-xl text-sm"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <button
+                type="button"
+                onClick={() => setEditingPayment(null)}
+                className="w-full h-12 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl active:scale-98 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl active:scale-98 transition-all shadow-xs"
+              >
+                Save Changes
+              </button>
+            </div>
+          </form>
+        )}
       </Modal>
     </div>
   );

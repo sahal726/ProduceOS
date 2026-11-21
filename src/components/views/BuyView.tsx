@@ -4,7 +4,7 @@ import React, { useState, useId } from 'react';
 import { useStore } from '@/lib/use-store';
 import { Unit, PaymentMode, PurchaseItem } from '@/types';
 import { QuantityInput } from '@/components/QuantityInput';
-import { quintalToKg, formatINR, formatQuantity } from '@/lib/calculations';
+import { formatINR, formatQuantity } from '@/lib/calculations';
 import {
   Plus,
   Trash2,
@@ -125,7 +125,7 @@ export const BuyView: React.FC = () => {
   const computedItems: { item: DraftItem; qtyKg: number; rate: number; total: number }[] =
     items.map((it) => {
       const rawQty = parseFloat(it.raw_qty) || 0;
-      const qtyKg = it.unit === 'quintal' ? quintalToKg(rawQty) : rawQty;
+      const qtyKg = rawQty;
       const rate = parseFloat(it.rate_per_kg) || 0;
       const total = Number((qtyKg * rate).toFixed(2));
       return { item: it, qtyKg, rate, total };
@@ -390,11 +390,9 @@ export const BuyView: React.FC = () => {
                   </select>
                 </div>
 
-                {/* Quantity with kg/quintal toggle */}
+                {/* Quantity in KG */}
                 <QuantityInput
-                  label="Quantity"
-                  unit={it.unit}
-                  onUnitChange={(newUnit) => handleUpdateItem(it.id, { unit: newUnit })}
+                  label="Quantity (KG)"
                   rawQuantity={it.raw_qty}
                   onQuantityChange={(val) => handleUpdateItem(it.id, { raw_qty: val })}
                   placeholder="e.g. 5 or 25.5"

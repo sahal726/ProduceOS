@@ -393,6 +393,22 @@ class ERPDataStore {
     }));
   }
 
+  public updateSale(id: string, updates: Partial<Sale>): void {
+    this.updateData((prev) => ({
+      ...prev,
+      sales: prev.sales.map((s) => {
+        if (s.id !== id) return s;
+        const updated = { ...s, ...updates, updated_at: new Date().toISOString() };
+        if (updates.received_amount !== undefined || updates.total_amount !== undefined) {
+          const tot = updates.total_amount !== undefined ? updates.total_amount : s.total_amount;
+          const rec = updates.received_amount !== undefined ? updates.received_amount : s.received_amount;
+          updated.balance_receivable = Math.max(0, tot - rec);
+        }
+        return updated;
+      }),
+    }));
+  }
+
   // --- Payments ---
   public addPayment(payment: Omit<Payment, 'id' | 'created_at' | 'updated_at'>): Payment {
     const newPayment: Payment = {
@@ -406,6 +422,22 @@ class ERPDataStore {
       payments: [newPayment, ...prev.payments],
     }));
     return newPayment;
+  }
+
+  public updatePayment(id: string, updates: Partial<Payment>): void {
+    this.updateData((prev) => ({
+      ...prev,
+      payments: prev.payments.map((p) =>
+        p.id === id ? { ...p, ...updates, updated_at: new Date().toISOString() } : p
+      ),
+    }));
+  }
+
+  public deletePayment(id: string): void {
+    this.updateData((prev) => ({
+      ...prev,
+      payments: prev.payments.filter((p) => p.id !== id),
+    }));
   }
 
   // --- Expenses ---

@@ -28,9 +28,9 @@ describe('Unit Conversions & Formats', () => {
     expect(quintalToKg(0.25)).toBe(25);
   });
 
-  it('formats quantity with kg and quintal equivalent', () => {
-    expect(formatQuantity(520)).toBe('520 kg (5.2 qtl)');
-    expect(formatQuantity(100)).toBe('100 kg (1 qtl)');
+  it('formats quantity in kg', () => {
+    expect(formatQuantity(520)).toBe('520 kg');
+    expect(formatQuantity(100)).toBe('100 kg');
   });
 
   it('formats currency in Indian Rupees format', () => {
@@ -477,5 +477,85 @@ describe('Cash Book & Cash in Hand', () => {
     expect(cashBook.cash_in).toBe(5000);
     expect(cashBook.cash_out).toBe(3500); // 3000 + 500
     expect(cashBook.closing_cash).toBe(11500);
+  });
+});
+
+describe('Payment Editing & Deletion', () => {
+  const party: Party = {
+    id: 'pty-test',
+    name: 'Test Party Traders',
+    opening_balance_receivable: 0,
+    is_active: true,
+    created_at: '2026-11-01T00:00:00Z',
+    updated_at: '2026-11-01T00:00:00Z',
+  };
+
+  const sales: Sale[] = [
+    {
+      id: 's-test-1',
+      date: '2026-11-10',
+      created_at: '2026-11-10T10:00:00Z',
+      party_id: 'pty-test',
+      party_name: 'Test Party Traders',
+      total_amount: 100000,
+      received_amount: 0,
+      payment_mode: 'bank',
+      balance_receivable: 100000,
+      total_cogs: 70000,
+      items: [],
+    },
+  ];
+
+  it('adjusts party ledger when a payment is edited from 5,000 to 50,000', () => {
+    // Initial payment of 5000 (wrongly typed)
+    const initialPayment: Payment = {
+      id: 'pay-1',
+      date: '2026-11-12',
+      direction: 'in',
+      entity_type: 'party',
+      entity_id: 'pty-test',
+      entity_name: 'Test Party Traders',
+      amount: 5000,
+      payment_mode: 'bank',
+      created_at: '2026-11-12T10:00:00Z',
+    };
+
+    const initialResult = computePartyLedger(party, sales, [initialPayment]);
+    expect(initialResult.totalReceived).toBe(5000);
+    expect(initialResult.closingBalanceReceivable).toBe(95000);
+
+    // Edited payment to 50000 (corrected)
+    const editedPayment: Payment = {
+      ...initialPayment,
+      amount: 50000,
+      updated_at: '2026-11-12T10:05:00Z',
+    };
+
+    const editedResult = computePartyLedger(party, sales, [editedPayment]);
+    expect(editedResult.totalReceived).toBe(50000);
+    expect(editedResult.closingBalanceReceivable).toBe(50000);
+  });
+
+  it('restores party receivable when a payment is deleted', () => {
+    const payment: Payment = {
+      id: 'pay-1',
+      date: '2026-11-12',
+      direction: 'in',
+      entity_type: 'party',
+      entity_id: 'pty-test',
+      entity_name: 'Test Party Traders',
+      amount: 50000,
+      payment_mode: 'bank',
+      created_at: '2026-11-12T10:00:00Z',
+    };
+
+    // Before deletion
+    const withPayment = computePartyLedger(party, sales, [payment]);
+    expect(withPayment.closingBalanceReceivable).toBe(50000);
+
+    // After deletion (filtered out from payments array)
+    const afterDeletion = computePartyLedger(party, sales, []);
+    expect(afterDeletion.totalReceived).toBe(0);
+    expect(afterDeletion.closingBalanceReceivable).toBe(100000);
   });
 });
