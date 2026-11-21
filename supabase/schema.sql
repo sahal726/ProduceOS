@@ -250,26 +250,33 @@ create table if not exists erp_store (
 -- Enable Row Level Security
 alter table erp_store enable row level security;
 
--- Policies for public anon access (allows reading & updating shop_main data)
+-- Policies for public access (allows reading & updating shop_main data)
 drop policy if exists "Allow anon read erp_store" on erp_store;
-create policy "Allow anon read erp_store"
-  on erp_store for select
-  to anon
-  using (true);
-
 drop policy if exists "Allow anon insert erp_store" on erp_store;
-create policy "Allow anon insert erp_store"
-  on erp_store for insert
-  to anon
-  with check (true);
-
 drop policy if exists "Allow anon update erp_store" on erp_store;
-create policy "Allow anon update erp_store"
-  on erp_store for update
-  to anon
-  using (true);
+drop policy if exists "Allow all access erp_store" on erp_store;
+
+create policy "Allow all access erp_store"
+  on erp_store
+  for all
+  using (true)
+  with check (true);
 
 -- Pre-seed shop_main record so it is immediately available for updates
 insert into erp_store (id, data, updated_at)
 values ('shop_main', '{}'::jsonb, now())
 on conflict (id) do nothing;
+
+-- Enable Supabase Realtime broadcast for erp_store
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    if not exists (
+      select 1 from pg_publication_tables 
+      where pubname = 'supabase_realtime' and tablename = 'erp_store'
+    ) then
+      alter publication supabase_realtime add table erp_store;
+    end if;
+  end if;
+end;
+$$;

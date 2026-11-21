@@ -1528,7 +1528,7 @@ export const MoreView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => {
-                        const sql = `-- ProduceOS Cloud Sync Table\ncreate table if not exists erp_store (\n  id text primary key,\n  data jsonb not null default '{}'::jsonb,\n  updated_at timestamptz not null default now()\n);\nalter table erp_store enable row level security;\ncreate policy "Allow anon read erp_store" on erp_store for select to anon using (true);\ncreate policy "Allow anon insert erp_store" on erp_store for insert to anon with check (true);\ncreate policy "Allow anon update erp_store" on erp_store for update to anon using (true);\ninsert into erp_store (id, data, updated_at) values ('shop_main', '{}'::jsonb, now()) on conflict (id) do nothing;`;
+                        const sql = `-- ProduceOS Cloud Sync Table\ncreate table if not exists erp_store (\n  id text primary key,\n  data jsonb not null default '{}'::jsonb,\n  updated_at timestamptz not null default now()\n);\nalter table erp_store enable row level security;\ndrop policy if exists "Allow all access erp_store" on erp_store;\ncreate policy "Allow all access erp_store" on erp_store for all using (true) with check (true);\ninsert into erp_store (id, data, updated_at) values ('shop_main', '{}'::jsonb, now()) on conflict (id) do nothing;\ndo $$ begin if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'erp_store') then alter publication supabase_realtime add table erp_store; end if; end if; end; $$;`;
                         navigator.clipboard.writeText(sql);
                         setCopiedSql(true);
                         setTimeout(() => setCopiedSql(false), 2500);
@@ -1548,16 +1548,21 @@ export const MoreView: React.FC = () => {
 
 alter table erp_store enable row level security;
 
-create policy "Allow anon read erp_store" 
-  on erp_store for select to anon using (true);
-create policy "Allow anon insert erp_store" 
-  on erp_store for insert to anon with check (true);
-create policy "Allow anon update erp_store" 
-  on erp_store for update to anon using (true);
+drop policy if exists "Allow all access erp_store" on erp_store;
+create policy "Allow all access erp_store" 
+  on erp_store for all using (true) with check (true);
 
 insert into erp_store (id, data, updated_at) 
   values ('shop_main', '{}'::jsonb, now()) 
-  on conflict (id) do nothing;`}
+  on conflict (id) do nothing;
+
+do $$ begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'erp_store') then
+      alter publication supabase_realtime add table erp_store;
+    end if;
+  end if;
+end; $$;`}
                   </pre>
                   <p className="text-[10px] text-slate-400 leading-normal">
                     In your Supabase project dashboard, open the <strong>SQL Editor</strong>, paste the script above, and click <strong>Run</strong>.

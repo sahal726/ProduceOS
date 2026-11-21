@@ -26,6 +26,9 @@ import {
   Pencil,
   Trash2,
   CheckCircle2,
+  Cloud,
+  CloudOff,
+  CloudCheck,
 } from 'lucide-react';
 import { Modal } from '@/components/Modal';
 import { PaymentMode } from '@/types';
@@ -47,6 +50,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab, onO
     weight_losses,
     stock_adjustments,
     settings,
+    syncStatus,
+    getLastSyncError,
     addPayment,
     updatePayment,
     deletePayment,
@@ -230,6 +235,35 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab, onO
         <div className="sticky top-14 z-30 bg-emerald-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2 animate-in slide-in-from-top duration-200">
           <CheckCircle2 className="w-4 h-4 text-emerald-200" />
           <span>{successToast}</span>
+        </div>
+      )}
+
+      {/* Cloud Status Notice (if offline or error) */}
+      {syncStatus === 'unconfigured' && (
+        <div
+          onClick={() => onNavigateTab('more')}
+          className="cursor-pointer bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl p-2.5 flex items-center justify-between text-xs text-slate-700 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <Cloud className="w-4 h-4 text-slate-500 shrink-0" />
+            <span className="font-medium">Cloud sync not connected (offline mode)</span>
+          </div>
+          <span className="font-bold text-slate-900 text-[11px] underline">Connect Supabase →</span>
+        </div>
+      )}
+
+      {syncStatus === 'error' && (
+        <div
+          onClick={() => onNavigateTab('more')}
+          className="cursor-pointer bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl p-2.5 flex items-center justify-between text-xs text-amber-900 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <CloudOff className="w-4 h-4 text-amber-600 shrink-0" />
+            <span className="font-medium truncate max-w-[220px]">
+              Cloud Sync Error: {getLastSyncError() || 'Check database'}
+            </span>
+          </div>
+          <span className="font-bold text-amber-900 text-[11px] underline shrink-0">Fix in Settings →</span>
         </div>
       )}
 

@@ -12,6 +12,7 @@ import {
   DailyRate,
   Settings,
 } from '@/types';
+import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured, getSupabaseClient, isConfigured } from './supabase';
 
 const STORAGE_KEY = 'produce_os_live_data_v1';
@@ -99,6 +100,7 @@ class ERPDataStore {
   private syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private initialSyncDone: boolean = false;
   private lastSyncError: string | null = null;
+  private realtimeChannel: RealtimeChannel | null = null;
 
   constructor() {
     this.data = this.loadFromStorage();
@@ -112,6 +114,63 @@ class ERPDataStore {
         console.log('Online detected: pulling latest data from cloud...');
         this.pullFromCloud();
       });
+
+      window.addEventListener('focus', () => {
+        if (isConfigured()) {
+          this.pullFromCloud();
+        }
+      });
+
+      // Background poll every 15s to keep all devices synchronized
+      setInterval(() => {
+        if (typeof document !== 'undefined' && !document.hidden && isConfigured()) {
+          this.pullFromCloud();
+        }
+      }, 15000);
+    }
+  }
+
+  private initRealtimeSync(): void {
+    if (typeof window === 'undefined') return;
+    const client = getSupabaseClient();
+    if (!client) return;
+
+    if (this.realtimeChannel) {
+      try {
+        client.removeChannel(this.realtimeChannel);
+      } catch (e) {
+        // ignore
+      }
+      this.realtimeChannel = null;
+    }
+
+    try {
+      this.realtimeChannel = client
+        .channel('erp_store_live')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'erp_store', filter: 'id=eq.shop_main' },
+          (payload) => {
+            const row = payload.new as { data?: ERPStoreData } | null;
+            if (row && row.data && typeof row.data === 'object' && Object.keys(row.data).length > 2) {
+              const cloudData = row.data;
+              this.data = {
+                ...getDefaultStoreData(),
+                ...cloudData,
+                products: cloudData.products?.length ? cloudData.products : INITIAL_PRODUCTS,
+                expense_categories: cloudData.expense_categories?.length ? cloudData.expense_categories : INITIAL_EXPENSE_CATEGORIES,
+              };
+              if (typeof window !== 'undefined') {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
+              }
+              this.setSyncStatus('synced');
+              this.notifyListeners();
+            }
+          }
+        )
+        .subscribe();
+    } catch (e) {
+      console.warn('Realtime subscription not active, using polling fallback', e);
     }
   }
 
@@ -158,7 +217,14 @@ class ERPDataStore {
         return false;
       }
 
-      if (data && data.data) {
+      const isRealData =
+        data &&
+        data.data &&
+        typeof data.data === 'object' &&
+        Object.keys(data.data).length > 2 &&
+        ('purchases' in data.data || 'sales' in data.data || 'farmers' in data.data || 'parties' in data.data);
+
+      if (isRealData) {
         const cloudData = data.data as ERPStoreData;
         this.data = {
           ...getDefaultStoreData(),
@@ -171,10 +237,11 @@ class ERPDataStore {
         }
         this.lastSyncError = null;
         this.setSyncStatus('synced');
+        this.initRealtimeSync();
         this.notifyListeners();
         return true;
       } else {
-        // First time cloud setup: push current local state to cloud
+        // Cloud has empty placeholder `{}`: push current local state to cloud!
         return await this.pushToCloud();
       }
     } catch (err: unknown) {
@@ -211,6 +278,7 @@ class ERPDataStore {
 
       this.lastSyncError = null;
       this.setSyncStatus('synced');
+      this.initRealtimeSync();
       return true;
     } catch (err: unknown) {
       console.error('Failed to push to Supabase', err);
