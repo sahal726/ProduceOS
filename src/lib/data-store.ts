@@ -12,7 +12,7 @@ import {
   DailyRate,
   Settings,
 } from '@/types';
-import { supabase, isSupabaseConfigured } from './supabase';
+import { supabase, isSupabaseConfigured, getSupabaseClient, isConfigured } from './supabase';
 
 const STORAGE_KEY = 'produce_os_live_data_v1';
 const AUTH_KEY = 'shop_erp_auth_pin_unlocked';
@@ -95,9 +95,10 @@ export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error' | 'unconfigured
 class ERPDataStore {
   private data: ERPStoreData;
   private listeners: Set<() => void> = new Set();
-  private syncStatus: SyncStatus = isSupabaseConfigured ? 'idle' : 'unconfigured';
+  private syncStatus: SyncStatus = isConfigured() ? 'idle' : 'unconfigured';
   private syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private initialSyncDone: boolean = false;
+  private lastSyncError: string | null = null;
 
   constructor() {
     this.data = this.loadFromStorage();
@@ -117,7 +118,7 @@ class ERPDataStore {
   private async initCloudSync() {
     if (this.initialSyncDone) return;
     this.initialSyncDone = true;
-    if (isSupabaseConfigured && supabase) {
+    if (isConfigured()) {
       await this.pullFromCloud();
     }
   }
@@ -126,19 +127,25 @@ class ERPDataStore {
     return this.syncStatus;
   }
 
+  public getLastSyncError(): string | null {
+    return this.lastSyncError;
+  }
+
   private setSyncStatus(status: SyncStatus): void {
     this.syncStatus = status;
     this.notifyListeners();
   }
 
   public async pullFromCloud(): Promise<boolean> {
-    if (!supabase || !isSupabaseConfigured) {
+    const client = getSupabaseClient();
+    if (!client) {
       this.setSyncStatus('unconfigured');
+      this.lastSyncError = 'Supabase credentials not configured';
       return false;
     }
     try {
       this.setSyncStatus('syncing');
-      const { data, error } = await supabase
+      const { data, error } = await client
         .from('erp_store')
         .select('data, updated_at')
         .eq('id', 'shop_main')
@@ -146,6 +153,7 @@ class ERPDataStore {
 
       if (error) {
         console.error('Supabase pull error:', error);
+        this.lastSyncError = error.message || JSON.stringify(error);
         this.setSyncStatus('error');
         return false;
       }
@@ -161,29 +169,32 @@ class ERPDataStore {
         if (typeof window !== 'undefined') {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
         }
+        this.lastSyncError = null;
         this.setSyncStatus('synced');
         this.notifyListeners();
         return true;
       } else {
         // First time cloud setup: push current local state to cloud
-        await this.pushToCloud();
-        return true;
+        return await this.pushToCloud();
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Failed to sync from Supabase', err);
+      this.lastSyncError = err instanceof Error ? err.message : 'Connection failed';
       this.setSyncStatus('error');
       return false;
     }
   }
 
   public async pushToCloud(): Promise<boolean> {
-    if (!supabase || !isSupabaseConfigured) {
+    const client = getSupabaseClient();
+    if (!client) {
       this.setSyncStatus('unconfigured');
+      this.lastSyncError = 'Supabase credentials not configured';
       return false;
     }
     try {
       this.setSyncStatus('syncing');
-      const { error } = await supabase
+      const { error } = await client
         .from('erp_store')
         .upsert({
           id: 'shop_main',
@@ -193,21 +204,24 @@ class ERPDataStore {
 
       if (error) {
         console.error('Supabase push error:', error);
+        this.lastSyncError = error.message || JSON.stringify(error);
         this.setSyncStatus('error');
         return false;
       }
 
+      this.lastSyncError = null;
       this.setSyncStatus('synced');
       return true;
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Failed to push to Supabase', err);
+      this.lastSyncError = err instanceof Error ? err.message : 'Connection failed';
       this.setSyncStatus('error');
       return false;
     }
   }
 
   private scheduleCloudSync(): void {
-    if (!isSupabaseConfigured || !supabase) return;
+    if (!isConfigured()) return;
     if (this.syncDebounceTimer) {
       clearTimeout(this.syncDebounceTimer);
     }
@@ -556,7 +570,7 @@ class ERPDataStore {
       localStorage.removeItem('shop_erp_data_v1');
     }
     this.notifyListeners();
-    if (isSupabaseConfigured && supabase) {
+    if (isConfigured()) {
       return await this.pushToCloud();
     }
     return true;

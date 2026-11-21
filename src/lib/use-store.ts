@@ -7,6 +7,7 @@ export function useStore(): ERPStoreData & {
   syncStatus: SyncStatus;
   pullFromCloud: () => Promise<boolean>;
   pushToCloud: () => Promise<boolean>;
+  getLastSyncError: () => string | null;
   addProduct: typeof dataStore.addProduct;
   updateProduct: typeof dataStore.updateProduct;
   addFarmer: typeof dataStore.addFarmer;
@@ -53,6 +54,7 @@ export function useStore(): ERPStoreData & {
     syncStatus,
     pullFromCloud: dataStore.pullFromCloud.bind(dataStore),
     pushToCloud: dataStore.pushToCloud.bind(dataStore),
+    getLastSyncError: dataStore.getLastSyncError.bind(dataStore),
     addProduct: dataStore.addProduct.bind(dataStore),
     updateProduct: dataStore.updateProduct.bind(dataStore),
     addFarmer: dataStore.addFarmer.bind(dataStore),

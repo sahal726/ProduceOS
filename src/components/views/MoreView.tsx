@@ -35,8 +35,14 @@ import {
   CloudSync,
   CloudOff,
   Cloud,
+  Copy,
+  Check,
+  Key,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { Modal } from '@/components/Modal';
+import { getSupabaseCredentials, saveCustomSupabaseCredentials } from '@/lib/supabase';
 import jsPDF from 'jspdf';
 
 type SubView =
@@ -77,8 +83,20 @@ export const MoreView: React.FC = () => {
     syncStatus,
     pullFromCloud,
     pushToCloud,
+    getLastSyncError,
   } = useStore();
   const [cloudMessage, setCloudMessage] = useState<string | null>(null);
+  const [supabaseUrlInput, setSupabaseUrlInput] = useState<string>(() => {
+    if (typeof window !== 'undefined') return getSupabaseCredentials().url;
+    return '';
+  });
+  const [supabaseKeyInput, setSupabaseKeyInput] = useState<string>(() => {
+    if (typeof window !== 'undefined') return getSupabaseCredentials().key;
+    return '';
+  });
+  const [showCredsForm, setShowCredsForm] = useState<boolean>(false);
+  const [showSqlGuide, setShowSqlGuide] = useState<boolean>(false);
+  const [copiedSql, setCopiedSql] = useState<boolean>(false);
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const currentMonthStr = todayStr.slice(0, 7); // YYYY-MM
@@ -1319,7 +1337,7 @@ export const MoreView: React.FC = () => {
                   : syncStatus === 'syncing'
                   ? 'Syncing...'
                   : syncStatus === 'error'
-                  ? 'Offline / Sync Error'
+                  ? 'Sync Error / Disconnected'
                   : 'Local Storage Only'}
               </span>
             </div>
@@ -1328,8 +1346,37 @@ export const MoreView: React.FC = () => {
               Transactions auto-sync to Supabase in the background whenever online, keeping all phones and computers in sync.
             </p>
 
+            {/* Error banner if sync failed */}
+            {syncStatus === 'error' && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex flex-col gap-1.5">
+                <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Cloud Sync Issue Detected</span>
+                </div>
+                {getLastSyncError() && (
+                  <div className="bg-white/90 p-2 rounded-lg font-mono text-[11px] text-amber-950 border border-amber-200/80 break-all select-all">
+                    {getLastSyncError()}
+                  </div>
+                )}
+                <p className="text-[11px] text-amber-700">
+                  {getLastSyncError()?.includes('erp_store')
+                    ? "The 'erp_store' table is missing in your Supabase project. Click the SQL Setup Script below to copy the create table query."
+                    : "Make sure your internet is working and check your Supabase Project URL & Anon Key below."}
+                </p>
+              </div>
+            )}
+
+            {syncStatus === 'unconfigured' && (
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 flex flex-col gap-1">
+                <div className="font-bold text-slate-800">Supabase is not connected yet</div>
+                <p className="text-[11px] text-slate-500">
+                  You can enter your Supabase Project URL & Anon Key below or add them as environment variables on Render to start auto-syncing.
+                </p>
+              </div>
+            )}
+
             {cloudMessage && (
-              <div className="text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 text-slate-800">
+              <div className="text-xs font-semibold px-3 py-2 rounded-xl bg-slate-100 text-slate-800 animate-fade-in">
                 {cloudMessage}
               </div>
             )}
@@ -1340,10 +1387,10 @@ export const MoreView: React.FC = () => {
                 onClick={async () => {
                   setCloudMessage('Pulling latest data from Supabase...');
                   const ok = await pullFromCloud();
-                  setCloudMessage(ok ? 'Synced successfully from cloud!' : 'Cloud sync failed. Check internet/keys.');
-                  setTimeout(() => setCloudMessage(null), 3000);
+                  setCloudMessage(ok ? 'Synced successfully from cloud!' : 'Cloud sync failed. Check connection.');
+                  setTimeout(() => setCloudMessage(null), 4000);
                 }}
-                className="h-11 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                className="h-11 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors active:scale-98"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>Pull from Cloud</span>
@@ -1354,14 +1401,169 @@ export const MoreView: React.FC = () => {
                 onClick={async () => {
                   setCloudMessage('Pushing local data to Supabase...');
                   const ok = await pushToCloud();
-                  setCloudMessage(ok ? 'Saved successfully to Supabase!' : 'Upload failed. Check internet/keys.');
-                  setTimeout(() => setCloudMessage(null), 3000);
+                  setCloudMessage(ok ? 'Saved successfully to Supabase!' : 'Upload failed. Check connection.');
+                  setTimeout(() => setCloudMessage(null), 4000);
                 }}
-                className="h-11 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                className="h-11 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors active:scale-98"
               >
                 <Database className="w-3.5 h-3.5" />
                 <span>Push to Cloud</span>
               </button>
+            </div>
+
+            {/* Supabase API Credentials Configuration */}
+            <div className="mt-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowCredsForm(!showCredsForm)}
+                className="w-full flex items-center justify-between text-xs font-bold text-slate-700 hover:text-slate-900 py-1"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Key className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Configure Supabase Keys</span>
+                  <span className="text-[10px] px-1.5 py-0.2 bg-slate-100 text-slate-600 rounded">
+                    {getSupabaseCredentials().source === 'env'
+                      ? 'Render Env'
+                      : getSupabaseCredentials().source === 'local'
+                      ? 'In-App Saved'
+                      : 'None'}
+                  </span>
+                </span>
+                {showCredsForm ? (
+                  <ChevronUp className="w-4 h-4 text-slate-400" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                )}
+              </button>
+
+              {showCredsForm && (
+                <div className="mt-3 flex flex-col gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600">
+                      Supabase Project URL
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="https://xyzcompany.supabase.co"
+                      value={supabaseUrlInput}
+                      onChange={(e) => setSupabaseUrlInput(e.target.value)}
+                      className="w-full h-10 mt-1 px-3 border border-slate-300 rounded-lg text-xs font-mono bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600">
+                      Supabase Anon Public API Key
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="eyJhbGciOiJIUzI1NiIsInR5c..."
+                      value={supabaseKeyInput}
+                      onChange={(e) => setSupabaseKeyInput(e.target.value)}
+                      className="w-full h-10 mt-1 px-3 border border-slate-300 rounded-lg text-xs font-mono bg-white"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 mt-1">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        saveCustomSupabaseCredentials(supabaseUrlInput, supabaseKeyInput);
+                        setCloudMessage('Saved Supabase keys! Testing cloud sync...');
+                        const ok = await pullFromCloud();
+                        if (ok) {
+                          setCloudMessage('Connected & synced successfully with Supabase!');
+                        } else {
+                          const err = getLastSyncError();
+                          setCloudMessage(`Sync error: ${err || 'Check Supabase table or keys'}`);
+                        }
+                      }}
+                      className="flex-1 h-9 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition-colors"
+                    >
+                      Save & Test Sync
+                    </button>
+                    {getSupabaseCredentials().source === 'local' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          saveCustomSupabaseCredentials('', '');
+                          setSupabaseUrlInput('');
+                          setSupabaseKeyInput('');
+                          setCloudMessage('Cleared custom in-app credentials.');
+                        }}
+                        className="px-3 h-9 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold transition-colors"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Supabase SQL Setup Helper */}
+            <div className="pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowSqlGuide(!showSqlGuide)}
+                className="w-full flex items-center justify-between text-xs font-bold text-slate-700 hover:text-slate-900 py-1"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Database className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Supabase SQL Setup Script</span>
+                </span>
+                {showSqlGuide ? (
+                  <ChevronUp className="w-4 h-4 text-slate-400" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                )}
+              </button>
+
+              {showSqlGuide && (
+                <div className="mt-3 flex flex-col gap-2.5 p-3 bg-slate-900 text-slate-100 rounded-xl">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-300">
+                      Run this in Supabase SQL Editor:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const sql = `-- ProduceOS Cloud Sync Table\ncreate table if not exists erp_store (\n  id text primary key,\n  data jsonb not null default '{}'::jsonb,\n  updated_at timestamptz not null default now()\n);\nalter table erp_store enable row level security;\ncreate policy "Allow anon read erp_store" on erp_store for select to anon using (true);\ncreate policy "Allow anon insert erp_store" on erp_store for insert to anon with check (true);\ncreate policy "Allow anon update erp_store" on erp_store for update to anon using (true);\ninsert into erp_store (id, data, updated_at) values ('shop_main', '{}'::jsonb, now()) on conflict (id) do nothing;`;
+                        navigator.clipboard.writeText(sql);
+                        setCopiedSql(true);
+                        setTimeout(() => setCopiedSql(false), 2500);
+                      }}
+                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-bold text-emerald-400 flex items-center gap-1 transition-colors"
+                    >
+                      {copiedSql ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedSql ? 'Copied!' : 'Copy SQL'}</span>
+                    </button>
+                  </div>
+                  <pre className="p-2.5 bg-slate-950 rounded-lg text-[10px] font-mono text-emerald-300 overflow-x-auto select-all leading-relaxed whitespace-pre">
+{`create table if not exists erp_store (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+alter table erp_store enable row level security;
+
+create policy "Allow anon read erp_store" 
+  on erp_store for select to anon using (true);
+create policy "Allow anon insert erp_store" 
+  on erp_store for insert to anon with check (true);
+create policy "Allow anon update erp_store" 
+  on erp_store for update to anon using (true);
+
+insert into erp_store (id, data, updated_at) 
+  values ('shop_main', '{}'::jsonb, now()) 
+  on conflict (id) do nothing;`}
+                  </pre>
+                  <p className="text-[10px] text-slate-400 leading-normal">
+                    In your Supabase project dashboard, open the <strong>SQL Editor</strong>, paste the script above, and click <strong>Run</strong>.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 

@@ -237,3 +237,39 @@ on conflict (name) do nothing;
 insert into settings (id, shop_name, owner_name, opening_cash_balance, opening_bank_balance, pin_code)
 values (1, 'Shop ERP', 'Produce Owner', 25000.00, 150000.00, '1234')
 on conflict (id) do nothing;
+
+-- ==============================================================================
+-- 15. ERP STORE TABLE (Sync table for ProduceOS live data across all devices)
+-- ==============================================================================
+create table if not exists erp_store (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+-- Enable Row Level Security
+alter table erp_store enable row level security;
+
+-- Policies for public anon access (allows reading & updating shop_main data)
+drop policy if exists "Allow anon read erp_store" on erp_store;
+create policy "Allow anon read erp_store"
+  on erp_store for select
+  to anon
+  using (true);
+
+drop policy if exists "Allow anon insert erp_store" on erp_store;
+create policy "Allow anon insert erp_store"
+  on erp_store for insert
+  to anon
+  with check (true);
+
+drop policy if exists "Allow anon update erp_store" on erp_store;
+create policy "Allow anon update erp_store"
+  on erp_store for update
+  to anon
+  using (true);
+
+-- Pre-seed shop_main record so it is immediately available for updates
+insert into erp_store (id, data, updated_at)
+values ('shop_main', '{}'::jsonb, now())
+on conflict (id) do nothing;
