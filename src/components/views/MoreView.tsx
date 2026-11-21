@@ -1359,7 +1359,9 @@ export const MoreView: React.FC = () => {
                   </div>
                 )}
                 <p className="text-[11px] text-amber-700">
-                  {getLastSyncError()?.includes('erp_store')
+                  {getLastSyncError()?.includes('permission denied')
+                    ? "Supabase permission denied on erp_store. Run the SQL script below to grant permissions to the anon key."
+                    : getLastSyncError()?.includes('relation') || getLastSyncError()?.includes('does not exist')
                     ? "The 'erp_store' table is missing in your Supabase project. Click the SQL Setup Script below to copy the create table query."
                     : "Make sure your internet is working and check your Supabase Project URL & Anon Key below."}
                 </p>
@@ -1528,7 +1530,7 @@ export const MoreView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => {
-                        const sql = `-- ProduceOS Cloud Sync Table\ncreate table if not exists erp_store (\n  id text primary key,\n  data jsonb not null default '{}'::jsonb,\n  updated_at timestamptz not null default now()\n);\nalter table erp_store enable row level security;\ndrop policy if exists "Allow all access erp_store" on erp_store;\ncreate policy "Allow all access erp_store" on erp_store for all using (true) with check (true);\ninsert into erp_store (id, data, updated_at) values ('shop_main', '{}'::jsonb, now()) on conflict (id) do nothing;\ndo $$ begin if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'erp_store') then alter publication supabase_realtime add table erp_store; end if; end if; end; $$;`;
+                        const sql = `-- ProduceOS Cloud Sync Table & Permissions\ncreate table if not exists erp_store (\n  id text primary key,\n  data jsonb not null default '{}'::jsonb,\n  updated_at timestamptz not null default now()\n);\ngrant usage on schema public to anon, authenticated, service_role;\ngrant all on table erp_store to anon, authenticated, service_role;\nalter table erp_store enable row level security;\ndrop policy if exists "Allow all access erp_store" on erp_store;\ncreate policy "Allow all access erp_store" on erp_store for all using (true) with check (true);\ninsert into erp_store (id, data, updated_at) values ('shop_main', '{}'::jsonb, now()) on conflict (id) do nothing;\ndo $$ begin if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'erp_store') then alter publication supabase_realtime add table erp_store; end if; end if; end; $$;`;
                         navigator.clipboard.writeText(sql);
                         setCopiedSql(true);
                         setTimeout(() => setCopiedSql(false), 2500);
@@ -1540,22 +1542,29 @@ export const MoreView: React.FC = () => {
                     </button>
                   </div>
                   <pre className="p-2.5 bg-slate-950 rounded-lg text-[10px] font-mono text-emerald-300 overflow-x-auto select-all leading-relaxed whitespace-pre">
-{`create table if not exists erp_store (
+{`-- 1. Create table
+create table if not exists erp_store (
   id text primary key,
   data jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
 
-alter table erp_store enable row level security;
+-- 2. Grant permissions to public anon role
+grant usage on schema public to anon, authenticated, service_role;
+grant all on table erp_store to anon, authenticated, service_role;
 
+-- 3. Enable RLS and allow full access
+alter table erp_store enable row level security;
 drop policy if exists "Allow all access erp_store" on erp_store;
 create policy "Allow all access erp_store" 
   on erp_store for all using (true) with check (true);
 
+-- 4. Pre-seed record
 insert into erp_store (id, data, updated_at) 
   values ('shop_main', '{}'::jsonb, now()) 
   on conflict (id) do nothing;
 
+-- 5. Enable Realtime
 do $$ begin
   if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'erp_store') then

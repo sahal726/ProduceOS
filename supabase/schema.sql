@@ -247,6 +247,10 @@ create table if not exists erp_store (
   updated_at timestamptz not null default now()
 );
 
+-- Grant schema and table permissions to anon and authenticated roles
+grant usage on schema public to anon, authenticated, service_role;
+grant all on table erp_store to anon, authenticated, service_role;
+
 -- Enable Row Level Security
 alter table erp_store enable row level security;
 
