@@ -1,4 +1,4 @@
-const CACHE_NAME = 'shop-erp-v2';
+const CACHE_NAME = 'produceos-v4';
 const ASSETS_TO_CACHE = [
   '/',
   '/manifest.json',

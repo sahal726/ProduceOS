@@ -98,6 +98,7 @@ export const SellView: React.FC = () => {
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('bank'); // sales usually bank/UPI
   const [notes, setNotes] = useState<string>('');
   const [billRoundAdjustment, setBillRoundAdjustment] = useState<number>(0);
+  const [customBillTotal, setCustomBillTotal] = useState<string>('');
   const [stockOverrideConfirmed, setStockOverrideConfirmed] = useState<boolean>(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
@@ -178,13 +179,14 @@ export const SellView: React.FC = () => {
   // Computations
   const computedItems = items.map((it) => {
     const qtyKg = parseFloat(it.raw_qty) || 0;
-    const ratePerKg = parseFloat(it.rate_per_kg) || 0;
-    const calculatedLineTotal = Number((qtyKg * ratePerKg).toFixed(2));
+    const inputRate = parseFloat(it.rate_per_kg) || 0;
+    const calculatedLineTotal = Number((qtyKg * inputRate).toFixed(2));
     const hasCustomTotal =
       it.custom_total !== undefined &&
       it.custom_total !== '' &&
       !isNaN(parseFloat(it.custom_total));
     const lineTotal = hasCustomTotal ? parseFloat(it.custom_total!) : calculatedLineTotal;
+    const ratePerKg = inputRate > 0 ? inputRate : (qtyKg > 0 && lineTotal > 0 ? Number((lineTotal / qtyKg).toFixed(2)) : 0);
 
     // Stock & Cost
     const costInfo = computeProductCostHistory(
@@ -223,7 +225,10 @@ export const SellView: React.FC = () => {
   });
 
   const sumActualTotals = computedItems.reduce((acc, ci) => acc + ci.lineTotal, 0);
-  const grandTotal = Math.max(0, Number((sumActualTotals + billRoundAdjustment).toFixed(2)));
+  const grandTotal =
+    customBillTotal !== '' && !isNaN(parseFloat(customBillTotal))
+      ? Math.max(0, parseFloat(customBillTotal))
+      : Math.max(0, Number((sumActualTotals + billRoundAdjustment).toFixed(2)));
   const totalCogs = computedItems.reduce((acc, ci) => acc + ci.cogsAmount, 0);
   const receivedAmount = parseFloat(receivedNow) || 0;
   const balanceReceivable = Math.max(0, Number((grandTotal - receivedAmount).toFixed(2)));
@@ -364,6 +369,7 @@ export const SellView: React.FC = () => {
     });
 
     setBillRoundAdjustment(0);
+    setCustomBillTotal('');
 
     // Auto-record weight difference if any item had weigh-in vs weigh-out difference
     validLines.forEach((vl) => {
@@ -589,11 +595,11 @@ export const SellView: React.FC = () => {
                   required
                 />
 
-                {/* Selling Rate (per KG) & Item Total (₹) */}
+                {/* Selling Rate (per KG) & Total Price (₹) */}
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="text-xs font-bold text-slate-700 uppercase">
-                      Rate / KG (₹) <span className="text-rose-500">*</span>
+                      Rate / KG (₹)
                     </label>
                     <input
                       type="text"
@@ -613,7 +619,7 @@ export const SellView: React.FC = () => {
                   <div>
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-bold text-slate-700 uppercase">
-                        Item Total (₹)
+                        Total Price (₹)
                       </label>
                       {computed.isCustomTotal && (
                         <button
@@ -645,12 +651,29 @@ export const SellView: React.FC = () => {
                       }}
                       className={`w-full h-11 mt-1 px-3 text-sm font-extrabold rounded-xl focus:ring-2 focus:ring-blue-500 ${
                         computed.isCustomTotal
-                          ? 'bg-amber-50 border border-amber-300 text-amber-950 font-black'
+                          ? 'bg-amber-50 border-2 border-amber-400 text-amber-950 font-black'
                           : 'bg-white border border-slate-300 text-slate-900'
                       }`}
                     />
                   </div>
                 </div>
+
+                {/* Quick 1-tap Rounding for Line Item */}
+                {computed.calculatedLineTotal > 0 && computed.calculatedLineTotal % 10 !== 0 && !computed.isCustomTotal && (
+                  <div className="flex items-center gap-2 pt-0.5">
+                    <span className="text-[10px] text-slate-500 font-medium">Quick Round Item:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const rounded = Math.floor(computed.calculatedLineTotal / 10) * 10;
+                        handleUpdateItem(it.id, { custom_total: rounded.toString() });
+                      }}
+                      className="text-[10px] font-bold text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-300 px-2 py-0.5 rounded-md transition-colors"
+                    >
+                      Round to ₹{Math.floor(computed.calculatedLineTotal / 10) * 10}
+                    </button>
+                  </div>
+                )}
 
                 {/* Optional Weigh-in vs Weigh-out toggle */}
                 <div className="pt-1">
@@ -738,43 +761,66 @@ export const SellView: React.FC = () => {
 
       {/* BILL TOTAL & RECEIVE PAYMENT SECTION */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col gap-3">
-        <div className="flex items-center justify-between pb-2 border-b border-slate-100 flex-wrap gap-2">
-          <div>
-            <span className="text-xs font-bold text-slate-500 uppercase">Total Bill Amount</span>
-            {billRoundAdjustment !== 0 && (
-              <span className="ml-2 text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
-                Adjusted by {billRoundAdjustment > 0 ? '+' : ''}{billRoundAdjustment}
-              </span>
-            )}
+        {/* Total Bill Amount - Editable & with 1-tap rounding */}
+        <div className="pb-3 border-b border-slate-100">
+          <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
+            <label className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
+              <span>Total Bill Amount (₹)</span>
+              {(customBillTotal !== '' || billRoundAdjustment !== 0) && (
+                <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+                  {grandTotal < sumActualTotals ? `Rounded down by ₹${(sumActualTotals - grandTotal).toFixed(0)}` : `Custom total`}
+                </span>
+              )}
+            </label>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {sumActualTotals > 0 && sumActualTotals % 10 !== 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const rounded = Math.floor(sumActualTotals / 10) * 10;
+                    setCustomBillTotal(rounded.toString());
+                  }}
+                  className="text-[11px] font-bold text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-300 transition-colors"
+                  title={`Round down to ₹${Math.floor(sumActualTotals / 10) * 10}`}
+                >
+                  Round to ₹{Math.floor(sumActualTotals / 10) * 10}
+                </button>
+              )}
+              {(customBillTotal !== '' || billRoundAdjustment !== 0) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomBillTotal('');
+                    setBillRoundAdjustment(0);
+                  }}
+                  className="text-[10px] text-slate-500 hover:text-slate-800 underline font-semibold"
+                >
+                  Reset (₹{sumActualTotals})
+                </button>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            {sumActualTotals > 0 && (sumActualTotals % 10 !== 0 || billRoundAdjustment !== 0) && (
-              <div className="flex items-center gap-1">
-                {billRoundAdjustment === 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const rounded = Math.floor(sumActualTotals / 10) * 10;
-                      setBillRoundAdjustment(rounded - sumActualTotals);
-                    }}
-                    className="text-[11px] font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-1 rounded-lg transition-colors"
-                    title={`Round down to ₹${Math.floor(sumActualTotals / 10) * 10}`}
-                  >
-                    Round to {formatINR(Math.floor(sumActualTotals / 10) * 10)}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setBillRoundAdjustment(0)}
-                    className="text-[11px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg flex items-center gap-1"
-                    title="Reset to exact sum"
-                  >
-                    <RotateCcw className="w-3 h-3" /> Exact
-                  </button>
-                )}
-              </div>
-            )}
-            <span className="text-xl font-black text-blue-900">{formatINR(grandTotal)}</span>
+          <div className="relative">
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-lg font-black text-blue-700 pointer-events-none">₹</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder={sumActualTotals > 0 ? sumActualTotals.toString() : '0'}
+              value={
+                customBillTotal !== ''
+                  ? customBillTotal
+                  : grandTotal > 0
+                  ? grandTotal.toString()
+                  : ''
+              }
+              onChange={(e) => {
+                const val = e.target.value;
+                if (/^\d*\.?\d*$/.test(val)) {
+                  setCustomBillTotal(val);
+                }
+              }}
+              className="w-full h-12 pl-8 pr-3 text-xl font-black text-blue-950 bg-blue-50/60 border border-blue-300 rounded-xl focus:ring-2 focus:ring-blue-500 shadow-2xs"
+            />
           </div>
         </div>
 
