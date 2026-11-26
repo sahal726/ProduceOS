@@ -20,6 +20,8 @@ import {
   AlertTriangle,
   ChevronDown,
   Scale,
+  Pencil,
+  RotateCcw,
 } from 'lucide-react';
 import { Modal } from '@/components/Modal';
 
@@ -34,6 +36,7 @@ export const SellView: React.FC = () => {
     daily_rates,
     addParty,
     addSale,
+    updateSale,
     deleteSale,
     addWeightLoss,
     getDailyRate,
@@ -67,6 +70,7 @@ export const SellView: React.FC = () => {
     product_name: string;
     raw_qty: string;
     rate_per_kg: string;
+    custom_total?: string;
     // Optional weigh-in vs weigh-out
     show_weight_diff: boolean;
     shop_weight_raw: string;
@@ -93,8 +97,21 @@ export const SellView: React.FC = () => {
   const [receivedNow, setReceivedNow] = useState<string>('');
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('bank'); // sales usually bank/UPI
   const [notes, setNotes] = useState<string>('');
+  const [billRoundAdjustment, setBillRoundAdjustment] = useState<number>(0);
   const [stockOverrideConfirmed, setStockOverrideConfirmed] = useState<boolean>(false);
   const [successToast, setSuccessToast] = useState<string | null>(null);
+
+  // Edit Existing Sale State
+  interface EditSaleState {
+    id: string;
+    party_name: string;
+    total_amount: string;
+    received_amount: string;
+    payment_mode: PaymentMode;
+    date: string;
+    notes: string;
+  }
+  const [editingSale, setEditingSale] = useState<EditSaleState | null>(null);
 
   // Filtered parties
   const filteredParties = parties.filter(
@@ -162,7 +179,12 @@ export const SellView: React.FC = () => {
   const computedItems = items.map((it) => {
     const qtyKg = parseFloat(it.raw_qty) || 0;
     const ratePerKg = parseFloat(it.rate_per_kg) || 0;
-    const lineTotal = Number((qtyKg * ratePerKg).toFixed(2));
+    const calculatedLineTotal = Number((qtyKg * ratePerKg).toFixed(2));
+    const hasCustomTotal =
+      it.custom_total !== undefined &&
+      it.custom_total !== '' &&
+      !isNaN(parseFloat(it.custom_total));
+    const lineTotal = hasCustomTotal ? parseFloat(it.custom_total!) : calculatedLineTotal;
 
     // Stock & Cost
     const costInfo = computeProductCostHistory(
@@ -189,7 +211,9 @@ export const SellView: React.FC = () => {
       item: it,
       qtyKg,
       ratePerKg,
+      calculatedLineTotal,
       lineTotal,
+      isCustomTotal: hasCustomTotal,
       availableStockKg,
       weightedAvgCost,
       cogsAmount,
@@ -198,10 +222,42 @@ export const SellView: React.FC = () => {
     };
   });
 
-  const grandTotal = computedItems.reduce((acc, ci) => acc + ci.lineTotal, 0);
+  const sumActualTotals = computedItems.reduce((acc, ci) => acc + ci.lineTotal, 0);
+  const grandTotal = Math.max(0, Number((sumActualTotals + billRoundAdjustment).toFixed(2)));
   const totalCogs = computedItems.reduce((acc, ci) => acc + ci.cogsAmount, 0);
   const receivedAmount = parseFloat(receivedNow) || 0;
-  const balanceReceivable = Math.max(0, grandTotal - receivedAmount);
+  const balanceReceivable = Math.max(0, Number((grandTotal - receivedAmount).toFixed(2)));
+
+  const handleOpenEditSale = (s: (typeof sales)[0]) => {
+    setEditingSale({
+      id: s.id,
+      party_name: s.party_name,
+      total_amount: s.total_amount.toString(),
+      received_amount: s.received_amount.toString(),
+      payment_mode: s.payment_mode,
+      date: s.date,
+      notes: s.notes || '',
+    });
+  };
+
+  const handleSaveEditedSale = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSale) return;
+    const tot = parseFloat(editingSale.total_amount) || 0;
+    const rec = parseFloat(editingSale.received_amount) || 0;
+
+    updateSale(editingSale.id, {
+      total_amount: tot,
+      received_amount: rec,
+      payment_mode: editingSale.payment_mode,
+      date: editingSale.date,
+      notes: editingSale.notes.trim() || undefined,
+    });
+
+    setSuccessToast(`Sale price updated to ${formatINR(tot)} successfully!`);
+    setTimeout(() => setSuccessToast(null), 3000);
+    setEditingSale(null);
+  };
   const hasInsufficientStock = computedItems.some((ci) => ci.isInsufficientStock);
 
   const handleSaveParty = (e: React.FormEvent) => {
@@ -259,7 +315,7 @@ export const SellView: React.FC = () => {
       alert('Please select a party');
       return;
     }
-    const validLines = computedItems.filter((ci) => ci.qtyKg > 0 && ci.ratePerKg > 0);
+    const validLines = computedItems.filter((ci) => ci.qtyKg > 0 && (ci.ratePerKg > 0 || ci.lineTotal > 0));
     if (validLines.length === 0) {
       alert('Please enter valid quantity and selling rate for at least one item');
       return;
@@ -274,22 +330,25 @@ export const SellView: React.FC = () => {
 
     const saleId = `sale-${Date.now()}`;
 
-    const saleItems: SaleItem[] = validLines.map((vl) => ({
-      id: `si-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      sale_id: saleId,
-      product_id: vl.item.product_id,
-      product_name: vl.item.product_name,
-      quantity_kg: vl.qtyKg,
-      selling_rate_per_kg: vl.ratePerKg,
-      total_amount: vl.lineTotal,
-      cost_rate_per_kg: vl.weightedAvgCost,
-      cogs_amount: vl.cogsAmount,
-      input_unit: 'kg',
-      input_quantity: parseFloat(vl.item.raw_qty) || 0,
-      shop_weight_kg: vl.item.show_weight_diff ? parseFloat(vl.item.shop_weight_raw) : undefined,
-      party_weight_kg: vl.item.show_weight_diff ? parseFloat(vl.item.party_weight_raw) : undefined,
-      weight_diff_kg: vl.weightDiffKg > 0 ? vl.weightDiffKg : undefined,
-    }));
+    const saleItems: SaleItem[] = validLines.map((vl) => {
+      const effectiveRate = vl.qtyKg > 0 ? Number((vl.lineTotal / vl.qtyKg).toFixed(2)) : vl.ratePerKg;
+      return {
+        id: `si-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        sale_id: saleId,
+        product_id: vl.item.product_id,
+        product_name: vl.item.product_name,
+        quantity_kg: vl.qtyKg,
+        selling_rate_per_kg: effectiveRate,
+        total_amount: vl.lineTotal,
+        cost_rate_per_kg: vl.weightedAvgCost,
+        cogs_amount: vl.cogsAmount,
+        input_unit: 'kg',
+        input_quantity: parseFloat(vl.item.raw_qty) || 0,
+        shop_weight_kg: vl.item.show_weight_diff ? parseFloat(vl.item.shop_weight_raw) : undefined,
+        party_weight_kg: vl.item.show_weight_diff ? parseFloat(vl.item.party_weight_raw) : undefined,
+        weight_diff_kg: vl.weightDiffKg > 0 ? vl.weightDiffKg : undefined,
+      };
+    });
 
     addSale({
       date: saleDate,
@@ -303,6 +362,8 @@ export const SellView: React.FC = () => {
       notes: notes.trim() || undefined,
       items: saleItems,
     });
+
+    setBillRoundAdjustment(0);
 
     // Auto-record weight difference if any item had weigh-in vs weigh-out difference
     validLines.forEach((vl) => {
@@ -528,24 +589,67 @@ export const SellView: React.FC = () => {
                   required
                 />
 
-                {/* Selling Rate (per KG) */}
-                <div>
-                  <label className="text-xs font-bold text-slate-700 uppercase">
-                    Selling Rate per KG (₹) <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    placeholder="e.g. 800"
-                    value={it.rate_per_kg}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (/^\d*\.?\d*$/.test(val)) {
-                        handleUpdateItem(it.id, { rate_per_kg: val });
+                {/* Selling Rate (per KG) & Item Total (₹) */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 uppercase">
+                      Rate / KG (₹) <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="e.g. 800"
+                      value={it.rate_per_kg}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (/^\d*\.?\d*$/.test(val)) {
+                          handleUpdateItem(it.id, { rate_per_kg: val, custom_total: undefined });
+                        }
+                      }}
+                      className="w-full h-11 mt-1 px-3 text-sm font-bold text-slate-900 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-700 uppercase">
+                        Item Total (₹)
+                      </label>
+                      {computed.isCustomTotal && (
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateItem(it.id, { custom_total: undefined })}
+                          className="text-[10px] text-blue-700 hover:text-blue-900 font-bold underline"
+                          title="Reset to Qty × Rate"
+                        >
+                          Reset
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder={computed.calculatedLineTotal > 0 ? computed.calculatedLineTotal.toString() : '0'}
+                      value={
+                        it.custom_total !== undefined
+                          ? it.custom_total
+                          : computed.calculatedLineTotal > 0
+                          ? computed.calculatedLineTotal.toString()
+                          : ''
                       }
-                    }}
-                    className="w-full h-11 mt-1 px-3 text-base font-bold text-slate-900 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"
-                  />
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (/^\d*\.?\d*$/.test(val)) {
+                          handleUpdateItem(it.id, { custom_total: val });
+                        }
+                      }}
+                      className={`w-full h-11 mt-1 px-3 text-sm font-extrabold rounded-xl focus:ring-2 focus:ring-blue-500 ${
+                        computed.isCustomTotal
+                          ? 'bg-amber-50 border border-amber-300 text-amber-950 font-black'
+                          : 'bg-white border border-slate-300 text-slate-900'
+                      }`}
+                    />
+                  </div>
                 </div>
 
                 {/* Optional Weigh-in vs Weigh-out toggle */}
@@ -612,9 +716,16 @@ export const SellView: React.FC = () => {
                   <span className="font-semibold text-slate-600">{formatINR(computed.cogsAmount)}</span>
                 </div>
 
-                {/* Line Total */}
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-700 font-bold">Line Total:</span>
+                {/* Line Total Summary / Rounding status */}
+                <div className="flex items-center justify-between pt-1 border-t border-slate-200/80 text-xs">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-slate-500 font-medium">Final Line Price:</span>
+                    {computed.isCustomTotal && (
+                      <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+                        Rounded from {formatINR(computed.calculatedLineTotal)}
+                      </span>
+                    )}
+                  </div>
                   <span className="font-extrabold text-blue-900 text-base">
                     {formatINR(computed.lineTotal)}
                   </span>
@@ -627,9 +738,44 @@ export const SellView: React.FC = () => {
 
       {/* BILL TOTAL & RECEIVE PAYMENT SECTION */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col gap-3">
-        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-          <span className="text-xs font-bold text-slate-500 uppercase">Total Bill Amount</span>
-          <span className="text-xl font-black text-blue-900">{formatINR(grandTotal)}</span>
+        <div className="flex items-center justify-between pb-2 border-b border-slate-100 flex-wrap gap-2">
+          <div>
+            <span className="text-xs font-bold text-slate-500 uppercase">Total Bill Amount</span>
+            {billRoundAdjustment !== 0 && (
+              <span className="ml-2 text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+                Adjusted by {billRoundAdjustment > 0 ? '+' : ''}{billRoundAdjustment}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {sumActualTotals > 0 && (sumActualTotals % 10 !== 0 || billRoundAdjustment !== 0) && (
+              <div className="flex items-center gap-1">
+                {billRoundAdjustment === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const rounded = Math.floor(sumActualTotals / 10) * 10;
+                      setBillRoundAdjustment(rounded - sumActualTotals);
+                    }}
+                    className="text-[11px] font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-1 rounded-lg transition-colors"
+                    title={`Round down to ₹${Math.floor(sumActualTotals / 10) * 10}`}
+                  >
+                    Round to {formatINR(Math.floor(sumActualTotals / 10) * 10)}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setBillRoundAdjustment(0)}
+                    className="text-[11px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg flex items-center gap-1"
+                    title="Reset to exact sum"
+                  >
+                    <RotateCcw className="w-3 h-3" /> Exact
+                  </button>
+                )}
+              </div>
+            )}
+            <span className="text-xl font-black text-blue-900">{formatINR(grandTotal)}</span>
+          </div>
         </div>
 
         {/* Received Now */}
@@ -776,17 +922,27 @@ export const SellView: React.FC = () => {
                     )}
                   </span>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (confirm('Delete this sale? This will restore inventory.')) {
-                        deleteSale(s.id);
-                      }
-                    }}
-                    className="text-rose-500 hover:text-rose-700 font-medium"
-                  >
-                    Delete
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditSale(s)}
+                      className="text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-0.5"
+                    >
+                      <Pencil className="w-3 h-3" />
+                      Edit Price
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm('Delete this sale? This will restore inventory.')) {
+                          deleteSale(s.id);
+                        }
+                      }}
+                      className="text-rose-500 hover:text-rose-700 font-medium"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -902,6 +1058,145 @@ export const SellView: React.FC = () => {
           </button>
         </form>
       </Modal>
+
+      {/* EDIT SALE MODAL */}
+      {editingSale && (
+        <Modal
+          isOpen={!!editingSale}
+          onClose={() => setEditingSale(null)}
+          title={`Edit Sale - ${editingSale.party_name}`}
+        >
+          <form onSubmit={handleSaveEditedSale} className="flex flex-col gap-3.5">
+            <div>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 uppercase">
+                  Total Sale Price (₹) <span className="text-rose-500">*</span>
+                </label>
+                {parseFloat(editingSale.total_amount) > 0 && parseFloat(editingSale.total_amount) % 10 !== 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = parseFloat(editingSale.total_amount);
+                      const rounded = Math.floor(cur / 10) * 10;
+                      setEditingSale({ ...editingSale, total_amount: rounded.toString() });
+                    }}
+                    className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200"
+                  >
+                    Round to {formatINR(Math.floor(parseFloat(editingSale.total_amount) / 10) * 10)}
+                  </button>
+                )}
+              </div>
+              <input
+                type="text"
+                inputMode="decimal"
+                required
+                value={editingSale.total_amount}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (/^\d*\.?\d*$/.test(val)) {
+                    setEditingSale({ ...editingSale, total_amount: val });
+                  }
+                }}
+                className="w-full h-11 mt-1 px-3 text-base font-extrabold bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 uppercase">
+                Received Now (₹)
+              </label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={editingSale.received_amount}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (/^\d*\.?\d*$/.test(val)) {
+                    setEditingSale({ ...editingSale, received_amount: val });
+                  }
+                }}
+                className="w-full h-11 mt-1 px-3 text-sm font-bold bg-white border border-slate-300 rounded-xl"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 uppercase">
+                Payment Mode
+              </label>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <button
+                  type="button"
+                  onClick={() => setEditingSale({ ...editingSale, payment_mode: 'cash' })}
+                  className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                    editingSale.payment_mode === 'cash'
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-white text-slate-700 border-slate-300'
+                  }`}
+                >
+                  Cash
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingSale({ ...editingSale, payment_mode: 'bank' })}
+                  className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                    editingSale.payment_mode === 'bank'
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-slate-700 border-slate-300'
+                  }`}
+                >
+                  Bank / UPI
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 uppercase">
+                Date
+              </label>
+              <input
+                type="date"
+                required
+                value={editingSale.date}
+                onChange={(e) => setEditingSale({ ...editingSale, date: e.target.value })}
+                className="w-full h-11 mt-1 px-3 text-sm bg-white border border-slate-300 rounded-xl"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 uppercase">
+                Notes
+              </label>
+              <input
+                type="text"
+                value={editingSale.notes}
+                onChange={(e) => setEditingSale({ ...editingSale, notes: e.target.value })}
+                placeholder="Optional notes..."
+                className="w-full h-11 mt-1 px-3 text-sm bg-white border border-slate-300 rounded-xl"
+              />
+            </div>
+
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 font-semibold flex items-center justify-between">
+              <span>Updated Party Balance Due:</span>
+              <span className="font-extrabold text-sm">
+                {formatINR(
+                  Math.max(
+                    0,
+                    (parseFloat(editingSale.total_amount) || 0) - (parseFloat(editingSale.received_amount) || 0)
+                  )
+                )}
+              </span>
+            </div>
+
+            <button
+              type="submit"
+              className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl mt-1 active:scale-98 transition-all"
+            >
+              Save Price Changes
+            </button>
+          </form>
+        </Modal>
+      )}
     </div>
   );
 };

@@ -453,6 +453,22 @@ class ERPDataStore {
     }));
   }
 
+  public updatePurchase(id: string, updates: Partial<Purchase>): void {
+    this.updateData((prev) => ({
+      ...prev,
+      purchases: prev.purchases.map((p) => {
+        if (p.id !== id) return p;
+        const updated = { ...p, ...updates, updated_at: new Date().toISOString() };
+        if (updates.paid_amount !== undefined || updates.total_amount !== undefined) {
+          const tot = updates.total_amount !== undefined ? updates.total_amount : p.total_amount;
+          const paid = updates.paid_amount !== undefined ? updates.paid_amount : p.paid_amount;
+          updated.balance_payable = Math.max(0, tot - paid);
+        }
+        return updated;
+      }),
+    }));
+  }
+
   // --- Sales ---
   public addSale(sale: Omit<Sale, 'id' | 'created_at' | 'updated_at'>): Sale {
     const newSale: Sale = {

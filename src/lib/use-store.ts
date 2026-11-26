@@ -15,6 +15,7 @@ export function useStore(): ERPStoreData & {
   addParty: typeof dataStore.addParty;
   updateParty: typeof dataStore.updateParty;
   addPurchase: typeof dataStore.addPurchase;
+  updatePurchase: typeof dataStore.updatePurchase;
   deletePurchase: typeof dataStore.deletePurchase;
   addSale: typeof dataStore.addSale;
   updateSale: typeof dataStore.updateSale;
@@ -62,6 +63,7 @@ export function useStore(): ERPStoreData & {
     addParty: dataStore.addParty.bind(dataStore),
     updateParty: dataStore.updateParty.bind(dataStore),
     addPurchase: dataStore.addPurchase.bind(dataStore),
+    updatePurchase: dataStore.updatePurchase.bind(dataStore),
     deletePurchase: dataStore.deletePurchase.bind(dataStore),
     addSale: dataStore.addSale.bind(dataStore),
     updateSale: dataStore.updateSale.bind(dataStore),

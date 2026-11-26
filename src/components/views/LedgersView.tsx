@@ -47,7 +47,10 @@ export const LedgersView: React.FC<LedgersViewProps> = ({
     addPayment,
     updatePayment,
     deletePayment,
+    updatePurchase,
+    deletePurchase,
     updateSale,
+    deleteSale,
   } = useStore();
 
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -89,6 +92,31 @@ export const LedgersView: React.FC<LedgersViewProps> = ({
     notes: string;
   }
   const [editingPayment, setEditingPayment] = useState<EditPaymentState | null>(null);
+
+  // Edit Purchase State
+  interface EditPurchaseState {
+    id: string;
+    farmer_name: string;
+    total_amount: string;
+    paid_amount: string;
+    payment_mode: PaymentMode;
+    date: string;
+    notes: string;
+  }
+  const [editingPurchase, setEditingPurchase] = useState<EditPurchaseState | null>(null);
+
+  // Edit Sale State
+  interface EditSaleState {
+    id: string;
+    party_name: string;
+    total_amount: string;
+    received_amount: string;
+    payment_mode: PaymentMode;
+    date: string;
+    notes: string;
+  }
+  const [editingSale, setEditingSale] = useState<EditSaleState | null>(null);
+
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [statementSortOrder, setStatementSortOrder] = useState<'recent' | 'oldest'>('recent');
 
@@ -296,6 +324,94 @@ export const LedgersView: React.FC<LedgersViewProps> = ({
     deletePayment(entryOrPay.id);
     setToastMessage(`Payment deleted successfully!`);
     setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // Purchase Edit & Delete Handlers
+  const handleOpenEditPurchase = (purchaseId: string, farmerName: string) => {
+    const p = purchases.find((x) => x.id === purchaseId);
+    if (!p) return;
+    setEditingPurchase({
+      id: p.id,
+      farmer_name: farmerName,
+      total_amount: p.total_amount.toString(),
+      paid_amount: p.paid_amount.toString(),
+      payment_mode: p.payment_mode,
+      date: p.date,
+      notes: p.notes || '',
+    });
+  };
+
+  const handleSaveEditedPurchase = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPurchase) return;
+    const tot = parseFloat(editingPurchase.total_amount) || 0;
+    const paid = parseFloat(editingPurchase.paid_amount) || 0;
+
+    updatePurchase(editingPurchase.id, {
+      total_amount: tot,
+      paid_amount: paid,
+      payment_mode: editingPurchase.payment_mode,
+      date: editingPurchase.date,
+      notes: editingPurchase.notes.trim() || undefined,
+    });
+
+    setToastMessage(`Purchase price updated to ${formatINR(tot)} successfully!`);
+    setTimeout(() => setToastMessage(null), 3000);
+    setEditingPurchase(null);
+  };
+
+  const handleDeletePurchase = (purchaseId: string, farmerName: string) => {
+    const p = purchases.find((x) => x.id === purchaseId);
+    const amt = p ? p.total_amount : 0;
+    if (confirm(`Delete this purchase of ${formatINR(amt)} from ${farmerName}? This will deduct inventory and adjust the farmer ledger.`)) {
+      deletePurchase(purchaseId);
+      setToastMessage(`Purchase deleted successfully!`);
+      setTimeout(() => setToastMessage(null), 3000);
+    }
+  };
+
+  // Sale Edit & Delete Handlers
+  const handleOpenEditSale = (saleId: string, partyName: string) => {
+    const s = sales.find((x) => x.id === saleId);
+    if (!s) return;
+    setEditingSale({
+      id: s.id,
+      party_name: partyName,
+      total_amount: s.total_amount.toString(),
+      received_amount: s.received_amount.toString(),
+      payment_mode: s.payment_mode,
+      date: s.date,
+      notes: s.notes || '',
+    });
+  };
+
+  const handleSaveEditedSale = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSale) return;
+    const tot = parseFloat(editingSale.total_amount) || 0;
+    const rec = parseFloat(editingSale.received_amount) || 0;
+
+    updateSale(editingSale.id, {
+      total_amount: tot,
+      received_amount: rec,
+      payment_mode: editingSale.payment_mode,
+      date: editingSale.date,
+      notes: editingSale.notes.trim() || undefined,
+    });
+
+    setToastMessage(`Sale price updated to ${formatINR(tot)} successfully!`);
+    setTimeout(() => setToastMessage(null), 3000);
+    setEditingSale(null);
+  };
+
+  const handleDeleteSale = (saleId: string, partyName: string) => {
+    const s = sales.find((x) => x.id === saleId);
+    const amt = s ? s.total_amount : 0;
+    if (confirm(`Delete this sale of ${formatINR(amt)} to ${partyName}? This will restore inventory and adjust party ledger.`)) {
+      deleteSale(saleId);
+      setToastMessage(`Sale deleted successfully!`);
+      setTimeout(() => setToastMessage(null), 3000);
+    }
   };
 
   // WhatsApp Statement Share
@@ -638,6 +754,74 @@ Total Amount Paid: ${formatCurrency(currentFarmerItem.totalPaid)}
                                 }
                                 className="px-2 py-0.5 text-[10px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-md border border-rose-200 flex items-center gap-1 transition-colors"
                                 title="Delete payment"
+                              >
+                                <Trash2 className="w-2.5 h-2.5" />
+                                <span>Delete</span>
+                              </button>
+                            </div>
+                          )}
+
+                          {entry.reference_type === 'purchase' && (
+                            <div className="flex items-center gap-1.5 mt-1.5 justify-end">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleOpenEditPurchase(
+                                    entry.reference_id || entry.id.replace('pur-', ''),
+                                    currentFarmerItem?.farmer.name || 'Farmer'
+                                  )
+                                }
+                                className="px-2 py-0.5 text-[10px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200 flex items-center gap-1 transition-colors"
+                                title="Edit purchase price / round amount"
+                              >
+                                <Pencil className="w-2.5 h-2.5" />
+                                <span>Edit Price</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleDeletePurchase(
+                                    entry.reference_id || entry.id.replace('pur-', ''),
+                                    currentFarmerItem?.farmer.name || 'Farmer'
+                                  )
+                                }
+                                className="px-2 py-0.5 text-[10px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-md border border-rose-200 flex items-center gap-1 transition-colors"
+                                title="Delete purchase"
+                              >
+                                <Trash2 className="w-2.5 h-2.5" />
+                                <span>Delete</span>
+                              </button>
+                            </div>
+                          )}
+
+                          {entry.reference_type === 'sale' && (
+                            <div className="flex items-center gap-1.5 mt-1.5 justify-end">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleOpenEditSale(
+                                    entry.reference_id || entry.id.replace('sale-', ''),
+                                    currentPartyItem?.party.name || 'Party'
+                                  )
+                                }
+                                className="px-2 py-0.5 text-[10px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200 flex items-center gap-1 transition-colors"
+                                title="Edit sale price / round amount"
+                              >
+                                <Pencil className="w-2.5 h-2.5" />
+                                <span>Edit Price</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleDeleteSale(
+                                    entry.reference_id || entry.id.replace('sale-', ''),
+                                    currentPartyItem?.party.name || 'Party'
+                                  )
+                                }
+                                className="px-2 py-0.5 text-[10px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-md border border-rose-200 flex items-center gap-1 transition-colors"
+                                title="Delete sale"
                               >
                                 <Trash2 className="w-2.5 h-2.5" />
                                 <span>Delete</span>
@@ -1086,6 +1270,302 @@ Total Amount Paid: ${formatCurrency(currentFarmerItem.totalPaid)}
           </form>
         )}
       </Modal>
+
+      {/* EDIT PURCHASE MODAL */}
+      {editingPurchase && (
+        <Modal
+          isOpen={!!editingPurchase}
+          onClose={() => setEditingPurchase(null)}
+          title={`Edit Purchase Price - ${editingPurchase.farmer_name}`}
+        >
+          <form onSubmit={handleSaveEditedPurchase} className="flex flex-col gap-3.5">
+            <div>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 uppercase">
+                  Total Purchase Price (₹) <span className="text-rose-500">*</span>
+                </label>
+                {parseFloat(editingPurchase.total_amount) > 0 && parseFloat(editingPurchase.total_amount) % 10 !== 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = parseFloat(editingPurchase.total_amount);
+                      const rounded = Math.floor(cur / 10) * 10;
+                      setEditingPurchase({ ...editingPurchase, total_amount: rounded.toString() });
+                    }}
+                    className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200"
+                  >
+                    Round to {formatINR(Math.floor(parseFloat(editingPurchase.total_amount) / 10) * 10)}
+                  </button>
+                )}
+              </div>
+              <input
+                type="text"
+                inputMode="decimal"
+                required
+                value={editingPurchase.total_amount}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (/^\d*\.?\d*$/.test(val)) {
+                    setEditingPurchase({ ...editingPurchase, total_amount: val });
+                  }
+                }}
+                className="w-full h-11 mt-1 px-3 text-base font-extrabold bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500"
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 uppercase">
+                Paid to Farmer Now (₹)
+              </label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={editingPurchase.paid_amount}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (/^\d*\.?\d*$/.test(val)) {
+                    setEditingPurchase({ ...editingPurchase, paid_amount: val });
+                  }
+                }}
+                className="w-full h-11 mt-1 px-3 text-sm font-bold bg-white border border-slate-300 rounded-xl"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 uppercase">
+                Payment Mode
+              </label>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <button
+                  type="button"
+                  onClick={() => setEditingPurchase({ ...editingPurchase, payment_mode: 'cash' })}
+                  className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                    editingPurchase.payment_mode === 'cash'
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-white text-slate-700 border-slate-300'
+                  }`}
+                >
+                  Cash
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingPurchase({ ...editingPurchase, payment_mode: 'bank' })}
+                  className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                    editingPurchase.payment_mode === 'bank'
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-slate-700 border-slate-300'
+                  }`}
+                >
+                  Bank / UPI
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 uppercase">
+                Date
+              </label>
+              <input
+                type="date"
+                required
+                value={editingPurchase.date}
+                onChange={(e) => setEditingPurchase({ ...editingPurchase, date: e.target.value })}
+                className="w-full h-11 mt-1 px-3 text-sm bg-white border border-slate-300 rounded-xl"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 uppercase">
+                Notes
+              </label>
+              <input
+                type="text"
+                value={editingPurchase.notes}
+                onChange={(e) => setEditingPurchase({ ...editingPurchase, notes: e.target.value })}
+                placeholder="Optional notes..."
+                className="w-full h-11 mt-1 px-3 text-sm bg-white border border-slate-300 rounded-xl"
+              />
+            </div>
+
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 font-semibold flex items-center justify-between">
+              <span>Updated Balance Payable to Farmer:</span>
+              <span className="font-extrabold text-sm">
+                {formatINR(
+                  Math.max(
+                    0,
+                    (parseFloat(editingPurchase.total_amount) || 0) - (parseFloat(editingPurchase.paid_amount) || 0)
+                  )
+                )}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 mt-1">
+              <button
+                type="button"
+                onClick={() => setEditingPurchase(null)}
+                className="w-full h-12 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl active:scale-98 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl active:scale-98 transition-all"
+              >
+                Save Price
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* EDIT SALE MODAL */}
+      {editingSale && (
+        <Modal
+          isOpen={!!editingSale}
+          onClose={() => setEditingSale(null)}
+          title={`Edit Sale Price - ${editingSale.party_name}`}
+        >
+          <form onSubmit={handleSaveEditedSale} className="flex flex-col gap-3.5">
+            <div>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 uppercase">
+                  Total Sale Price (₹) <span className="text-rose-500">*</span>
+                </label>
+                {parseFloat(editingSale.total_amount) > 0 && parseFloat(editingSale.total_amount) % 10 !== 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = parseFloat(editingSale.total_amount);
+                      const rounded = Math.floor(cur / 10) * 10;
+                      setEditingSale({ ...editingSale, total_amount: rounded.toString() });
+                    }}
+                    className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200"
+                  >
+                    Round to {formatINR(Math.floor(parseFloat(editingSale.total_amount) / 10) * 10)}
+                  </button>
+                )}
+              </div>
+              <input
+                type="text"
+                inputMode="decimal"
+                required
+                value={editingSale.total_amount}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (/^\d*\.?\d*$/.test(val)) {
+                    setEditingSale({ ...editingSale, total_amount: val });
+                  }
+                }}
+                className="w-full h-11 mt-1 px-3 text-base font-extrabold bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 uppercase">
+                Received Now (₹)
+              </label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={editingSale.received_amount}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (/^\d*\.?\d*$/.test(val)) {
+                    setEditingSale({ ...editingSale, received_amount: val });
+                  }
+                }}
+                className="w-full h-11 mt-1 px-3 text-sm font-bold bg-white border border-slate-300 rounded-xl"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 uppercase">
+                Payment Mode
+              </label>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <button
+                  type="button"
+                  onClick={() => setEditingSale({ ...editingSale, payment_mode: 'cash' })}
+                  className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                    editingSale.payment_mode === 'cash'
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-white text-slate-700 border-slate-300'
+                  }`}
+                >
+                  Cash
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingSale({ ...editingSale, payment_mode: 'bank' })}
+                  className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                    editingSale.payment_mode === 'bank'
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-slate-700 border-slate-300'
+                  }`}
+                >
+                  Bank / UPI
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 uppercase">
+                Date
+              </label>
+              <input
+                type="date"
+                required
+                value={editingSale.date}
+                onChange={(e) => setEditingSale({ ...editingSale, date: e.target.value })}
+                className="w-full h-11 mt-1 px-3 text-sm bg-white border border-slate-300 rounded-xl"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 uppercase">
+                Notes
+              </label>
+              <input
+                type="text"
+                value={editingSale.notes}
+                onChange={(e) => setEditingSale({ ...editingSale, notes: e.target.value })}
+                placeholder="Optional notes..."
+                className="w-full h-11 mt-1 px-3 text-sm bg-white border border-slate-300 rounded-xl"
+              />
+            </div>
+
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 font-semibold flex items-center justify-between">
+              <span>Updated Party Balance Due:</span>
+              <span className="font-extrabold text-sm">
+                {formatINR(
+                  Math.max(
+                    0,
+                    (parseFloat(editingSale.total_amount) || 0) - (parseFloat(editingSale.received_amount) || 0)
+                  )
+                )}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 mt-1">
+              <button
+                type="button"
+                onClick={() => setEditingSale(null)}
+                className="w-full h-12 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl active:scale-98 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl active:scale-98 transition-all"
+              >
+                Save Price
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </div>
   );
 };

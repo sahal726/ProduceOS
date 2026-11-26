@@ -565,3 +565,121 @@ describe('Payment Editing & Deletion', () => {
     expect(afterDeletion.closingBalanceReceivable).toBe(100000);
   });
 });
+
+describe('Purchase & Sale Price Rounding & Editing', () => {
+  it('updates farmer ledger when a purchase price is rounded from 532 to 530', () => {
+    const farmer: Farmer = {
+      id: 'f-round',
+      name: 'Coconut Farmer',
+      opening_balance_payable: 0,
+      is_active: true,
+      created_at: '2026-11-01T00:00:00Z',
+      updated_at: '2026-11-01T00:00:00Z',
+    };
+
+    // Original purchase calculated at 532 (e.g. 14 kg @ 38/kg = 532)
+    const originalPurchase: Purchase = {
+      id: 'pur-round-1',
+      date: '2026-11-15',
+      created_at: '2026-11-15T10:00:00Z',
+      farmer_id: 'f-round',
+      farmer_name: 'Coconut Farmer',
+      total_amount: 532,
+      paid_amount: 0,
+      payment_mode: 'cash',
+      balance_payable: 532,
+      items: [
+        {
+          id: 'pi-1',
+          purchase_id: 'pur-round-1',
+          product_id: 'prod-coconut',
+          product_name: 'Coconut',
+          quantity_kg: 14,
+          rate_per_kg: 38,
+          total_amount: 532,
+        },
+      ],
+    };
+
+    const initialResult = computeFarmerLedger(farmer, [originalPurchase], []);
+    expect(initialResult.totalPurchased).toBe(532);
+    expect(initialResult.closingBalancePayable).toBe(532);
+
+    // Rounded purchase to 530
+    const roundedPurchase: Purchase = {
+      ...originalPurchase,
+      total_amount: 530,
+      balance_payable: 530,
+      items: [
+        {
+          ...originalPurchase.items[0],
+          total_amount: 530,
+        },
+      ],
+    };
+
+    const roundedResult = computeFarmerLedger(farmer, [roundedPurchase], []);
+    expect(roundedResult.totalPurchased).toBe(530);
+    expect(roundedResult.closingBalancePayable).toBe(530);
+  });
+
+  it('updates party ledger when a sale price is rounded from 532 to 530', () => {
+    const party: Party = {
+      id: 'pty-round',
+      name: 'Coconut Buyer',
+      opening_balance_receivable: 0,
+      is_active: true,
+      created_at: '2026-11-01T00:00:00Z',
+      updated_at: '2026-11-01T00:00:00Z',
+    };
+
+    // Original sale calculated at 532
+    const originalSale: Sale = {
+      id: 'sale-round-1',
+      date: '2026-11-15',
+      created_at: '2026-11-15T10:00:00Z',
+      party_id: 'pty-round',
+      party_name: 'Coconut Buyer',
+      total_amount: 532,
+      received_amount: 0,
+      payment_mode: 'cash',
+      balance_receivable: 532,
+      total_cogs: 400,
+      items: [
+        {
+          id: 'si-1',
+          sale_id: 'sale-round-1',
+          product_id: 'prod-coconut',
+          product_name: 'Coconut',
+          quantity_kg: 14,
+          selling_rate_per_kg: 38,
+          total_amount: 532,
+          cost_rate_per_kg: 28.57,
+          cogs_amount: 400,
+        },
+      ],
+    };
+
+    const initialResult = computePartyLedger(party, [originalSale], []);
+    expect(initialResult.totalBilled).toBe(532);
+    expect(initialResult.closingBalanceReceivable).toBe(532);
+
+    // Rounded sale to 530
+    const roundedSale: Sale = {
+      ...originalSale,
+      total_amount: 530,
+      balance_receivable: 530,
+      items: [
+        {
+          ...originalSale.items[0],
+          total_amount: 530,
+          selling_rate_per_kg: Number((530 / 14).toFixed(2)),
+        },
+      ],
+    };
+
+    const roundedResult = computePartyLedger(party, [roundedSale], []);
+    expect(roundedResult.totalBilled).toBe(530);
+    expect(roundedResult.closingBalanceReceivable).toBe(530);
+  });
+});
