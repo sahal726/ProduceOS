@@ -230,8 +230,10 @@ export const BuyView: React.FC = () => {
     }
   };
 
-  // Today's purchase list
-  const todayPurchases = purchases.filter((p) => p.date === purchaseDate);
+  // Today's purchase list (recent on top)
+  const todayPurchases = purchases
+    .filter((p) => p.date === purchaseDate)
+    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
 
   return (
     <div className="flex flex-col gap-5 pb-12">

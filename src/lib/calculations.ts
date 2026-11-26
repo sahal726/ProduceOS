@@ -367,7 +367,7 @@ export function computeFarmerLedger(
   }
 
   return {
-    entries,
+    entries: entries.reverse(),
     closingBalancePayable: Number(runningBalance.toFixed(2)),
     totalPurchased: Number(totalPurchased.toFixed(2)),
     totalPaid: Number(totalPaid.toFixed(2)),
@@ -495,7 +495,7 @@ export function computePartyLedger(
   }
 
   return {
-    entries,
+    entries: entries.reverse(),
     closingBalanceReceivable: Number(runningBalance.toFixed(2)),
     totalBilled: Number(totalBilled.toFixed(2)),
     totalReceived: Number(totalReceived.toFixed(2)),

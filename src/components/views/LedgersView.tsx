@@ -23,6 +23,7 @@ import {
   Pencil,
   Trash2,
   CheckCircle2,
+  ArrowUpDown,
 } from 'lucide-react';
 import { Modal } from '@/components/Modal';
 import jsPDF from 'jspdf';
@@ -89,6 +90,7 @@ export const LedgersView: React.FC<LedgersViewProps> = ({
   }
   const [editingPayment, setEditingPayment] = useState<EditPaymentState | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [statementSortOrder, setStatementSortOrder] = useState<'recent' | 'oldest'>('recent');
 
   // 1. Compute Party Ledgers
   const partyLedgers = parties
@@ -337,7 +339,8 @@ Total Amount Paid: ${formatCurrency(currentFarmerItem.totalPaid)}
     const name = isParty ? currentPartyItem?.party.name : currentFarmerItem?.farmer.name;
     const place = isParty ? currentPartyItem?.party.place : currentFarmerItem?.farmer.place;
     const balance = isParty ? currentPartyItem?.receivable : currentFarmerItem?.payable;
-    const entries = isParty ? currentPartyItem?.ledger.entries : currentFarmerItem?.ledger.entries;
+    const rawEntries = isParty ? currentPartyItem?.ledger.entries : currentFarmerItem?.ledger.entries;
+    const entries = statementSortOrder === 'recent' ? rawEntries : [...(rawEntries || [])].reverse();
 
     // Header
     doc.setFontSize(18);
@@ -520,114 +523,135 @@ Total Amount Paid: ${formatCurrency(currentFarmerItem.totalPaid)}
           )}
 
           {/* Running Statement Entries */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
-              Running Ledger Statement
-            </h2>
+          {(() => {
+            const rawEntries =
+              selectedEntity.type === 'party'
+                ? currentPartyItem?.ledger.entries
+                : currentFarmerItem?.ledger.entries;
+            const entriesToDisplay =
+              statementSortOrder === 'recent'
+                ? rawEntries || []
+                : [...(rawEntries || [])].reverse();
 
-            {((selectedEntity.type === 'party'
-              ? currentPartyItem?.ledger.entries
-              : currentFarmerItem?.ledger.entries) || []).length === 0 ? (
-              <p className="text-xs text-slate-400 py-4 text-center">No transactions recorded</p>
-            ) : (
-              <div className="divide-y divide-slate-100">
-                {(selectedEntity.type === 'party'
-                  ? currentPartyItem?.ledger.entries
-                  : currentFarmerItem?.ledger.entries
-                )?.map((entry) => (
-                  <div key={entry.id} className="py-2.5 flex items-start justify-between gap-2">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                        <Calendar className="w-3 h-3" />
-                        <span>{entry.date}</span>
-                        {entry.mode && (
-                          <span className="bg-slate-100 text-slate-600 font-semibold px-1 rounded uppercase text-[9px]">
-                            {entry.mode}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs font-bold text-slate-900 mt-0.5">{entry.description}</div>
-                    </div>
+            return (
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Running Ledger Statement
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setStatementSortOrder(statementSortOrder === 'recent' ? 'oldest' : 'recent')
+                    }
+                    className="text-[10px] font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded-full flex items-center gap-1 transition-colors cursor-pointer"
+                    title="Click to toggle order"
+                  >
+                    <ArrowUpDown className="w-2.5 h-2.5 text-slate-500" />
+                    <span>{statementSortOrder === 'recent' ? 'Recent on Top ↓' : 'Oldest on Top ↑'}</span>
+                  </button>
+                </div>
 
-                    <div className="text-right shrink-0">
-                      {selectedEntity.type === 'party' ? (
-                        <>
-                          {entry.debit > 0 && (
-                            <div className="text-xs font-bold text-slate-900">
-                              +{formatINR(entry.debit)}
-                            </div>
-                          )}
-                          {entry.credit > 0 && (
-                            <div className="text-xs font-bold text-emerald-600">
-                              -{formatINR(entry.credit)}
-                            </div>
-                          )}
-                          <div className="text-[10px] text-slate-400 font-semibold mt-0.5">
-                            Bal: {formatINR(entry.running_balance)}
+                {entriesToDisplay.length === 0 ? (
+                  <p className="text-xs text-slate-400 py-4 text-center">No transactions recorded</p>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {entriesToDisplay.map((entry) => (
+                      <div key={entry.id} className="py-2.5 flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                            <Calendar className="w-3 h-3" />
+                            <span>{entry.date}</span>
+                            {entry.mode && (
+                              <span className="bg-slate-100 text-slate-600 font-semibold px-1 rounded uppercase text-[9px]">
+                                {entry.mode}
+                              </span>
+                            )}
                           </div>
-                        </>
-                      ) : (
-                        <>
-                          {entry.credit > 0 && (
-                            <div className="text-xs font-bold text-slate-900">
-                              +{formatINR(entry.credit)}
-                            </div>
-                          )}
-                          {entry.debit > 0 && (
-                            <div className="text-xs font-bold text-rose-600">
-                              -{formatINR(entry.debit)}
-                            </div>
-                          )}
-                          <div className="text-[10px] text-slate-400 font-semibold mt-0.5">
-                            Bal: {formatINR(entry.running_balance)}
-                          </div>
-                        </>
-                      )}
-
-                      {entry.reference_type === 'payment' && (
-                        <div className="flex items-center gap-1.5 mt-1.5 justify-end">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleOpenEditPayment(
-                                entry,
-                                selectedEntity.type,
-                                selectedEntity.type === 'party'
-                                  ? currentPartyItem?.party.name || 'Party'
-                                  : currentFarmerItem?.farmer.name || 'Farmer'
-                              )
-                            }
-                            className="px-2 py-0.5 text-[10px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200 flex items-center gap-1 transition-colors"
-                            title="Edit payment"
-                          >
-                            <Pencil className="w-2.5 h-2.5" />
-                            <span>Edit</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleDeletePayment(
-                                entry,
-                                selectedEntity.type === 'party'
-                                  ? currentPartyItem?.party.name || 'Party'
-                                  : currentFarmerItem?.farmer.name || 'Farmer'
-                              )
-                            }
-                            className="px-2 py-0.5 text-[10px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-md border border-rose-200 flex items-center gap-1 transition-colors"
-                            title="Delete payment"
-                          >
-                            <Trash2 className="w-2.5 h-2.5" />
-                            <span>Delete</span>
-                          </button>
+                          <div className="text-xs font-bold text-slate-900 mt-0.5">{entry.description}</div>
                         </div>
-                      )}
-                    </div>
+
+                        <div className="text-right shrink-0">
+                          {selectedEntity.type === 'party' ? (
+                            <>
+                              {entry.debit > 0 && (
+                                <div className="text-xs font-bold text-slate-900">
+                                  +{formatINR(entry.debit)}
+                                </div>
+                              )}
+                              {entry.credit > 0 && (
+                                <div className="text-xs font-bold text-emerald-600">
+                                  -{formatINR(entry.credit)}
+                                </div>
+                              )}
+                              <div className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                                Bal: {formatINR(entry.running_balance)}
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              {entry.credit > 0 && (
+                                <div className="text-xs font-bold text-slate-900">
+                                  +{formatINR(entry.credit)}
+                                </div>
+                              )}
+                              {entry.debit > 0 && (
+                                <div className="text-xs font-bold text-rose-600">
+                                  -{formatINR(entry.debit)}
+                                </div>
+                              )}
+                              <div className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                                Bal: {formatINR(entry.running_balance)}
+                              </div>
+                            </>
+                          )}
+
+                          {entry.reference_type === 'payment' && (
+                            <div className="flex items-center gap-1.5 mt-1.5 justify-end">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleOpenEditPayment(
+                                    entry,
+                                    selectedEntity.type,
+                                    selectedEntity.type === 'party'
+                                      ? currentPartyItem?.party.name || 'Party'
+                                      : currentFarmerItem?.farmer.name || 'Farmer'
+                                  )
+                                }
+                                className="px-2 py-0.5 text-[10px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md border border-blue-200 flex items-center gap-1 transition-colors"
+                                title="Edit payment"
+                              >
+                                <Pencil className="w-2.5 h-2.5" />
+                                <span>Edit</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleDeletePayment(
+                                    entry,
+                                    selectedEntity.type === 'party'
+                                      ? currentPartyItem?.party.name || 'Party'
+                                      : currentFarmerItem?.farmer.name || 'Farmer'
+                                  )
+                                }
+                                className="px-2 py-0.5 text-[10px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-md border border-rose-200 flex items-center gap-1 transition-colors"
+                                title="Delete payment"
+                              >
+                                <Trash2 className="w-2.5 h-2.5" />
+                                <span>Delete</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
-            )}
-          </div>
+            );
+          })()}
         </div>
       ) : (
         /* LIST VIEW WITH SEGMENTED CONTROL */

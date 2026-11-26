@@ -342,7 +342,9 @@ export const SellView: React.FC = () => {
     setStockOverrideConfirmed(false);
   };
 
-  const todaySales = sales.filter((s) => s.date === saleDate);
+  const todaySales = sales
+    .filter((s) => s.date === saleDate)
+    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
 
   return (
     <div className="flex flex-col gap-5 pb-12">

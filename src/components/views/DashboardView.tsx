@@ -585,7 +585,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab, onO
           </div>
 
           <div className="divide-y divide-slate-100">
-            {payments.slice(0, 5).map((p) => (
+            {[...payments]
+              .sort((a, b) => b.date.localeCompare(a.date) || (b.created_at || '').localeCompare(a.created_at || ''))
+              .slice(0, 5)
+              .map((p) => (
               <div key={p.id} className="py-2.5 flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">

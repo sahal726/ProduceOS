@@ -219,6 +219,9 @@ describe('Ledger Balances', () => {
     expect(result.closingBalancePayable).toBe(1500);
     expect(result.totalPurchased).toBe(4000);
     expect(result.totalPaid).toBe(3500); // 2500 + 1000
+    // Entries in reverse chronological order (recent on top, old on bottom)
+    expect(result.entries[0].id).toBe('pay-1'); // Most recent on Nov 5
+    expect(result.entries[result.entries.length - 1].reference_type).toBe('opening'); // Oldest at bottom
   });
 
   it('computes Party ledger running receivable matching specification example', () => {
@@ -307,6 +310,9 @@ describe('Ledger Balances', () => {
     expect(result.totalBilled).toBe(6000);
     expect(result.totalReceived).toBe(3000);
     expect(result.closingBalanceReceivable).toBe(3000);
+    // Entries in reverse chronological order (recent on top, old on bottom)
+    expect(result.entries[0].id).toBe('pay-rec-1'); // Most recent on Day 3
+    expect(result.entries[result.entries.length - 1].id).toBe('s1'); // Oldest on Day 1
   });
 });
 
