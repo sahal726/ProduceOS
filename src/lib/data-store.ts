@@ -16,6 +16,7 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured, getSupabaseClient, isConfigured } from './supabase';
 
 const STORAGE_KEY = 'produce_os_live_data_v1';
+const DELETED_IDS_KEY = 'produce_os_deleted_ids_v1';
 const AUTH_KEY = 'shop_erp_auth_pin_unlocked';
 
 export const INITIAL_PRODUCTS: Product[] = [
@@ -93,16 +94,105 @@ export function getDefaultStoreData(): ERPStoreData {
 
 export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error' | 'unconfigured';
 
+/**
+ * Merge two lists of entities by ID without ever discarding newly added local items.
+ */
+export function mergeEntityLists<T extends { id: string; updated_at?: string; created_at?: string }>(
+  localList: T[] = [],
+  cloudList: T[] = [],
+  deletedIds: Set<string> = new Set()
+): T[] {
+  const map = new Map<string, T>();
+
+  // 1. Add cloud items first (skipping anything in deletedIds)
+  for (const c of cloudList || []) {
+    if (c && c.id && !deletedIds.has(c.id)) {
+      map.set(c.id, c);
+    }
+  }
+
+  // 2. Add or update with local items (skipping anything in deletedIds)
+  // If local item does NOT exist in cloud, KEEP IT!
+  // If exists in both, compare timestamps and keep the newer one.
+  for (const l of localList || []) {
+    if (l && l.id && !deletedIds.has(l.id)) {
+      const existing = map.get(l.id);
+      if (!existing) {
+        map.set(l.id, l);
+      } else {
+        const localTime = new Date(l.updated_at || l.created_at || 0).getTime();
+        const cloudTime = new Date(existing.updated_at || existing.created_at || 0).getTime();
+        if (localTime >= cloudTime) {
+          map.set(l.id, l);
+        }
+      }
+    }
+  }
+
+  return Array.from(map.values());
+}
+
+/**
+ * Merges local store data with cloud data non-destructively.
+ */
+export function mergeStoreData(
+  local: ERPStoreData,
+  cloud: ERPStoreData,
+  deletedIds: Set<string> = new Set()
+): ERPStoreData {
+  return {
+    ...getDefaultStoreData(),
+    ...cloud,
+    ...local,
+    products: mergeEntityLists(local.products, cloud.products, deletedIds).length
+      ? mergeEntityLists(local.products, cloud.products, deletedIds)
+      : INITIAL_PRODUCTS,
+    farmers: mergeEntityLists(local.farmers, cloud.farmers, deletedIds),
+    parties: mergeEntityLists(local.parties, cloud.parties, deletedIds),
+    purchases: mergeEntityLists(local.purchases, cloud.purchases, deletedIds).sort((a, b) =>
+      (b.created_at || b.date || '').localeCompare(a.created_at || a.date || '')
+    ),
+    sales: mergeEntityLists(local.sales, cloud.sales, deletedIds).sort((a, b) =>
+      (b.created_at || b.date || '').localeCompare(a.created_at || a.date || '')
+    ),
+    payments: mergeEntityLists(local.payments, cloud.payments, deletedIds).sort((a, b) =>
+      (b.created_at || b.date || '').localeCompare(a.created_at || a.date || '')
+    ),
+    expenses: mergeEntityLists(local.expenses, cloud.expenses, deletedIds).sort((a, b) =>
+      (b.created_at || b.date || '').localeCompare(a.created_at || a.date || '')
+    ),
+    expense_categories: mergeEntityLists(
+      local.expense_categories,
+      cloud.expense_categories,
+      deletedIds
+    ).length
+      ? mergeEntityLists(local.expense_categories, cloud.expense_categories, deletedIds)
+      : INITIAL_EXPENSE_CATEGORIES,
+    weight_losses: mergeEntityLists(local.weight_losses, cloud.weight_losses, deletedIds),
+    stock_adjustments: mergeEntityLists(local.stock_adjustments, cloud.stock_adjustments, deletedIds),
+    daily_rates: mergeEntityLists(local.daily_rates, cloud.daily_rates, deletedIds),
+    settings: {
+      ...INITIAL_SETTINGS,
+      ...(cloud.settings || {}),
+      ...(local.settings || {}),
+    },
+    last_used_product_id: local.last_used_product_id || cloud.last_used_product_id || 'prod-coconut',
+  };
+}
+
 class ERPDataStore {
   private data: ERPStoreData;
+  private deletedIds: Set<string>;
   private listeners: Set<() => void> = new Set();
   private syncStatus: SyncStatus = isConfigured() ? 'idle' : 'unconfigured';
   private syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private initialSyncDone: boolean = false;
   private lastSyncError: string | null = null;
   private realtimeChannel: RealtimeChannel | null = null;
+  private hasPendingSync: boolean = false;
 
   constructor() {
+    this.deletedIds = this.loadDeletedIds();
     this.data = this.loadFromStorage();
     if (typeof window !== 'undefined') {
       // Background initial sync
@@ -110,24 +200,58 @@ class ERPDataStore {
         this.initCloudSync();
       }, 300);
 
-      window.addEventListener('online', () => {
-        console.log('Online detected: pulling latest data from cloud...');
-        this.pullFromCloud();
+      window.addEventListener('online', async () => {
+        console.log('Online detected: syncing with cloud...');
+        if (this.hasPendingSync) {
+          await this.pushToCloud();
+        }
+        await this.pullFromCloud();
       });
 
-      window.addEventListener('focus', () => {
+      window.addEventListener('focus', async () => {
         if (isConfigured()) {
-          this.pullFromCloud();
+          if (this.hasPendingSync) {
+            await this.pushToCloud();
+          }
+          await this.pullFromCloud();
         }
       });
 
-      // Background poll every 15s to keep all devices synchronized
+      // Background poll every 20s to keep all devices synchronized
       setInterval(() => {
         if (typeof document !== 'undefined' && !document.hidden && isConfigured()) {
           this.pullFromCloud();
         }
-      }, 15000);
+      }, 20000);
     }
+  }
+
+  private loadDeletedIds(): Set<string> {
+    if (typeof window === 'undefined') return new Set();
+    try {
+      const stored = localStorage.getItem(DELETED_IDS_KEY);
+      if (stored) {
+        const arr = JSON.parse(stored);
+        if (Array.isArray(arr)) return new Set(arr);
+      }
+    } catch (e) {
+      // ignore
+    }
+    return new Set();
+  }
+
+  private saveDeletedIds(): void {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(DELETED_IDS_KEY, JSON.stringify(Array.from(this.deletedIds)));
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  private recordDeletion(id: string): void {
+    this.deletedIds.add(id);
+    this.saveDeletedIds();
   }
 
   private initRealtimeSync(): void {
@@ -154,12 +278,9 @@ class ERPDataStore {
             const row = payload.new as { data?: ERPStoreData } | null;
             if (row && row.data && typeof row.data === 'object' && Object.keys(row.data).length > 2) {
               const cloudData = row.data;
-              this.data = {
-                ...getDefaultStoreData(),
-                ...cloudData,
-                products: cloudData.products?.length ? cloudData.products : INITIAL_PRODUCTS,
-                expense_categories: cloudData.expense_categories?.length ? cloudData.expense_categories : INITIAL_EXPENSE_CATEGORIES,
-              };
+              // Non-destructive merge preserves local additions
+              const merged = mergeStoreData(this.data, cloudData, this.deletedIds);
+              this.data = merged;
               if (typeof window !== 'undefined') {
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
               }
@@ -217,21 +338,32 @@ class ERPDataStore {
         return false;
       }
 
-      const isRealData =
+      const hasCloudData =
         data &&
         data.data &&
         typeof data.data === 'object' &&
-        Object.keys(data.data).length > 2 &&
-        ('purchases' in data.data || 'sales' in data.data || 'farmers' in data.data || 'parties' in data.data);
+        Object.keys(data.data).length > 2;
 
-      if (isRealData) {
+      if (hasCloudData) {
         const cloudData = data.data as ERPStoreData;
-        this.data = {
-          ...getDefaultStoreData(),
-          ...cloudData,
-          products: cloudData.products && cloudData.products.length > 0 ? cloudData.products : INITIAL_PRODUCTS,
-          expense_categories: cloudData.expense_categories && cloudData.expense_categories.length > 0 ? cloudData.expense_categories : INITIAL_EXPENSE_CATEGORIES,
-        };
+        
+        // Intelligent non-destructive merge: local items are NEVER discarded
+        const merged = mergeStoreData(this.data, cloudData, this.deletedIds);
+
+        // Check if local has items that were NOT yet in cloud
+        const hadLocalOnlyPurchases = this.data.purchases.some(
+          (lp) => !cloudData.purchases?.some((cp) => cp.id === lp.id)
+        );
+        const hadLocalOnlySales = this.data.sales.some(
+          (ls) => !cloudData.sales?.some((cs) => cs.id === ls.id)
+        );
+        const hadLocalOnlyPayments = this.data.payments.some(
+          (lpay) => !cloudData.payments?.some((cpay) => cpay.id === lpay.id)
+        );
+        const shouldPushMergedToCloud =
+          this.hasPendingSync || hadLocalOnlyPurchases || hadLocalOnlySales || hadLocalOnlyPayments;
+
+        this.data = merged;
         if (typeof window !== 'undefined') {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
         }
@@ -239,6 +371,12 @@ class ERPDataStore {
         this.setSyncStatus('synced');
         this.initRealtimeSync();
         this.notifyListeners();
+
+        // If local had unsynced items, push the merged state to cloud immediately
+        if (shouldPushMergedToCloud) {
+          await this.pushToCloud();
+        }
+
         return true;
       } else {
         // Cloud has empty placeholder `{}`: push current local state to cloud!
@@ -273,9 +411,16 @@ class ERPDataStore {
         console.error('Supabase push error:', error);
         this.lastSyncError = error.message || JSON.stringify(error);
         this.setSyncStatus('error');
+        // Auto-retry in 5 seconds
+        setTimeout(() => {
+          if (this.hasPendingSync && isConfigured()) {
+            this.pushToCloud();
+          }
+        }, 5000);
         return false;
       }
 
+      this.hasPendingSync = false;
       this.lastSyncError = null;
       this.setSyncStatus('synced');
       this.initRealtimeSync();
@@ -284,6 +429,11 @@ class ERPDataStore {
       console.error('Failed to push to Supabase', err);
       this.lastSyncError = err instanceof Error ? err.message : 'Connection failed';
       this.setSyncStatus('error');
+      setTimeout(() => {
+        if (this.hasPendingSync && isConfigured()) {
+          this.pushToCloud();
+        }
+      }, 5000);
       return false;
     }
   }
@@ -295,7 +445,7 @@ class ERPDataStore {
     }
     this.syncDebounceTimer = setTimeout(() => {
       this.pushToCloud();
-    }, 1500);
+    }, 400);
   }
 
   private loadFromStorage(): ERPStoreData {
@@ -354,6 +504,7 @@ class ERPDataStore {
 
   public updateData(updater: (prev: ERPStoreData) => ERPStoreData): void {
     this.data = updater(this.data);
+    this.hasPendingSync = true;
     this.saveToStorage(this.data);
   }
 
@@ -447,6 +598,7 @@ class ERPDataStore {
   }
 
   public deletePurchase(id: string): void {
+    this.recordDeletion(id);
     this.updateData((prev) => ({
       ...prev,
       purchases: prev.purchases.filter((p) => p.id !== id),
@@ -485,6 +637,7 @@ class ERPDataStore {
   }
 
   public deleteSale(id: string): void {
+    this.recordDeletion(id);
     this.updateData((prev) => ({
       ...prev,
       sales: prev.sales.filter((s) => s.id !== id),
@@ -532,6 +685,7 @@ class ERPDataStore {
   }
 
   public deletePayment(id: string): void {
+    this.recordDeletion(id);
     this.updateData((prev) => ({
       ...prev,
       payments: prev.payments.filter((p) => p.id !== id),
@@ -554,6 +708,7 @@ class ERPDataStore {
   }
 
   public deleteExpense(id: string): void {
+    this.recordDeletion(id);
     this.updateData((prev) => ({
       ...prev,
       expenses: prev.expenses.filter((e) => e.id !== id),

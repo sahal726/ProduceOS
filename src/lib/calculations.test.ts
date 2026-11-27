@@ -11,7 +11,9 @@ import {
   computeMonthlyProfit,
   computeCashBook,
   computeTotalCurrentFunds,
+  getLocalDateString,
 } from './calculations';
+import { mergeEntityLists, mergeStoreData, getDefaultStoreData } from './data-store';
 import { Farmer, Party, Purchase, Sale, Payment, Expense, WeightLoss, Settings } from '@/types';
 
 describe('Unit Conversions & Formats', () => {
@@ -683,3 +685,80 @@ describe('Purchase & Sale Price Rounding & Editing', () => {
     expect(roundedResult.closingBalanceReceivable).toBe(530);
   });
 });
+
+describe('Cloud Sync & Persistence Engine (Prevent Data Loss)', () => {
+  it('mergeEntityLists preserves newly added local items when cloud list is empty', () => {
+    const localPurchases: { id: string; name: string }[] = [
+      { id: 'p-new-1', name: 'New Buy 1' },
+      { id: 'p-new-2', name: 'New Buy 2' },
+    ];
+    const cloudPurchases: { id: string; name: string }[] = [];
+
+    const merged = mergeEntityLists(localPurchases, cloudPurchases);
+    expect(merged.length).toBe(2);
+    expect(merged.map((p) => p.id)).toEqual(['p-new-1', 'p-new-2']);
+  });
+
+  it('mergeEntityLists preserves both cloud items and local items', () => {
+    const localPurchases = [{ id: 'p-local', name: 'Local Only' }];
+    const cloudPurchases = [{ id: 'p-cloud', name: 'Cloud Only' }];
+
+    const merged = mergeEntityLists(localPurchases, cloudPurchases);
+    expect(merged.length).toBe(2);
+    const ids = merged.map((m) => m.id);
+    expect(ids).toContain('p-local');
+    expect(ids).toContain('p-cloud');
+  });
+
+  it('mergeEntityLists respects deletedIds and never revives deleted items', () => {
+    const localPurchases = [{ id: 'p-kept', name: 'Kept Buy' }];
+    const cloudPurchases = [
+      { id: 'p-kept', name: 'Kept Buy' },
+      { id: 'p-deleted', name: 'Deleted Buy' },
+    ];
+    const deletedIds = new Set<string>(['p-deleted']);
+
+    const merged = mergeEntityLists(localPurchases, cloudPurchases, deletedIds);
+    expect(merged.length).toBe(1);
+    expect(merged[0].id).toBe('p-kept');
+    expect(merged.some((m) => m.id === 'p-deleted')).toBe(false);
+  });
+
+  it('mergeStoreData prevents purchases from vanishing when background cloud pull runs', () => {
+    const defaultData = getDefaultStoreData();
+    const localStore = {
+      ...defaultData,
+      purchases: [
+        {
+          id: 'p-just-added',
+          date: '2026-11-27',
+          farmer_id: 'f1',
+          farmer_name: 'Test Farmer',
+          total_amount: 500,
+          paid_amount: 500,
+          payment_mode: 'cash' as const,
+          balance_payable: 0,
+          items: [],
+          created_at: '2026-11-27T10:00:00Z',
+        },
+      ],
+    };
+
+    // Stale cloud snapshot that does not yet have 'p-just-added'
+    const staleCloudStore = {
+      ...defaultData,
+      purchases: [],
+    };
+
+    const merged = mergeStoreData(localStore, staleCloudStore);
+    // Crucial: The newly added purchase MUST NOT be wiped out!
+    expect(merged.purchases.length).toBe(1);
+    expect(merged.purchases[0].id).toBe('p-just-added');
+  });
+
+  it('getLocalDateString returns YYYY-MM-DD in local time', () => {
+    const today = getLocalDateString();
+    expect(today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+

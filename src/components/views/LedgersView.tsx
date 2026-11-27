@@ -7,6 +7,7 @@ import {
   computePartyLedger,
   formatINR,
   formatCurrency,
+  getLocalDateString,
 } from '@/lib/calculations';
 import { PaymentMode } from '@/types';
 import {
@@ -53,7 +54,7 @@ export const LedgersView: React.FC<LedgersViewProps> = ({
     deleteSale,
   } = useStore();
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = getLocalDateString();
 
   // Tab: 'parties' | 'farmers' | 'payments'
   const [activeSegment, setActiveSegment] = useState<'parties' | 'farmers' | 'payments'>(

@@ -10,6 +10,7 @@ import {
   computeAllProductsStock,
   formatINR,
   formatQuantity,
+  getLocalDateString,
 } from '@/lib/calculations';
 import {
   Wallet,
@@ -59,7 +60,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigateTab, onO
     expense_categories,
   } = useStore();
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = getLocalDateString();
 
   // 1. Funds
   const funds = computeTotalCurrentFunds(settings, purchases, sales, payments, expenses);

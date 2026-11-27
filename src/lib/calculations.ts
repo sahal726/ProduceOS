@@ -60,6 +60,16 @@ export function formatINR(amount: number): string {
 }
 
 /**
+ * Returns today's date in local system timezone as YYYY-MM-DD
+ */
+export function getLocalDateString(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * Sorts array of objects by date ascending (YYYY-MM-DD) and then created_at
  */
 export function sortByDateAsc<T extends { date: string; created_at?: string }>(items: T[]): T[] {

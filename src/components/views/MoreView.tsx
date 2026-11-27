@@ -9,6 +9,7 @@ import {
   computeCashBook,
   formatINR,
   formatQuantity,
+  getLocalDateString,
 } from '@/lib/calculations';
 import { LossReason, PaymentMode } from '@/types';
 import {
@@ -98,7 +99,7 @@ export const MoreView: React.FC = () => {
   const [showSqlGuide, setShowSqlGuide] = useState<boolean>(false);
   const [copiedSql, setCopiedSql] = useState<boolean>(false);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = getLocalDateString();
   const currentMonthStr = todayStr.slice(0, 7); // YYYY-MM
 
   const [activeSubView, setActiveSubView] = useState<SubView>('menu');

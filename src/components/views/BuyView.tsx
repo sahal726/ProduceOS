@@ -4,7 +4,7 @@ import React, { useState, useId } from 'react';
 import { useStore } from '@/lib/use-store';
 import { Unit, PaymentMode, PurchaseItem } from '@/types';
 import { QuantityInput } from '@/components/QuantityInput';
-import { formatINR, formatQuantity } from '@/lib/calculations';
+import { formatINR, formatQuantity, getLocalDateString } from '@/lib/calculations';
 import {
   Plus,
   Trash2,
@@ -31,7 +31,7 @@ export const BuyView: React.FC = () => {
     last_used_product_id,
   } = useStore();
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = getLocalDateString();
   const activeProducts = products.filter((p) => p.is_active);
 
   // Form State
@@ -79,6 +79,7 @@ export const BuyView: React.FC = () => {
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash');
   const [notes, setNotes] = useState<string>('');
   const [billRoundAdjustment, setBillRoundAdjustment] = useState<number>(0);
+  const [customBillTotal, setCustomBillTotal] = useState<string>('');
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
   // Edit Existing Purchase State
@@ -149,13 +150,14 @@ export const BuyView: React.FC = () => {
   }[] = items.map((it) => {
     const rawQty = parseFloat(it.raw_qty) || 0;
     const qtyKg = rawQty;
-    const rate = parseFloat(it.rate_per_kg) || 0;
-    const calculatedTotal = Number((qtyKg * rate).toFixed(2));
+    const inputRate = parseFloat(it.rate_per_kg) || 0;
+    const calculatedTotal = Number((qtyKg * inputRate).toFixed(2));
     const hasCustomTotal =
       it.custom_total !== undefined &&
       it.custom_total !== '' &&
       !isNaN(parseFloat(it.custom_total));
     const total = hasCustomTotal ? parseFloat(it.custom_total!) : calculatedTotal;
+    const rate = inputRate > 0 ? inputRate : (qtyKg > 0 && total > 0 ? Number((total / qtyKg).toFixed(2)) : 0);
     return {
       item: it,
       qtyKg,
@@ -167,7 +169,10 @@ export const BuyView: React.FC = () => {
   });
 
   const sumActualTotals = computedItems.reduce((acc, ci) => acc + ci.total, 0);
-  const grandTotal = Math.max(0, Number((sumActualTotals + billRoundAdjustment).toFixed(2)));
+  const grandTotal =
+    customBillTotal !== '' && !isNaN(parseFloat(customBillTotal))
+      ? Math.max(0, parseFloat(customBillTotal))
+      : Math.max(0, Number((sumActualTotals + billRoundAdjustment).toFixed(2)));
   const paidAmount = parseFloat(paidNow) || 0;
   const balancePayable = Math.max(0, Number((grandTotal - paidAmount).toFixed(2)));
 
@@ -239,16 +244,20 @@ export const BuyView: React.FC = () => {
       return;
     }
 
-    const purchaseItems: PurchaseItem[] = validLines.map((vl) => {
-      const effectiveRate = vl.qtyKg > 0 ? Number((vl.total / vl.qtyKg).toFixed(2)) : vl.rate;
+    const purchaseItems: PurchaseItem[] = validLines.map((vl, idx) => {
+      let itemTotal = vl.total;
+      if (validLines.length === 1 && grandTotal > 0) {
+        itemTotal = grandTotal;
+      }
+      const effectiveRate = vl.qtyKg > 0 ? Number((itemTotal / vl.qtyKg).toFixed(2)) : vl.rate;
       return {
-        id: `pi-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        id: `pi-${Date.now()}-${Math.random().toString(36).substring(2, 6)}-${idx}`,
         purchase_id: '',
         product_id: vl.item.product_id,
         product_name: vl.item.product_name,
         quantity_kg: vl.qtyKg,
         rate_per_kg: effectiveRate,
-        total_amount: vl.total,
+        total_amount: itemTotal,
         input_unit: vl.item.unit,
         input_quantity: parseFloat(vl.item.raw_qty) || 0,
       };
@@ -269,6 +278,7 @@ export const BuyView: React.FC = () => {
     setSuccessToast(`Purchase of ${formatINR(grandTotal)} saved successfully!`);
     setTimeout(() => setSuccessToast(null), 3000);
     setBillRoundAdjustment(0);
+    setCustomBillTotal('');
 
     if (saveAndAddNext) {
       // Keep last used product for rapid 5kg farmer buying!
@@ -537,6 +547,23 @@ export const BuyView: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Quick 1-tap Rounding for Line Item */}
+                {computed.calculatedTotal > 0 && computed.calculatedTotal % 10 !== 0 && !computed.isCustomTotal && (
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleUpdateItem(it.id, {
+                          custom_total: (Math.floor(computed.calculatedTotal / 10) * 10).toString(),
+                        })
+                      }
+                      className="text-[11px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-md transition-colors"
+                    >
+                      Round to ₹{Math.floor(computed.calculatedTotal / 10) * 10}
+                    </button>
+                  </div>
+                )}
+
                 {/* Line Total Summary / Rounding status */}
                 <div className="flex items-center justify-between pt-1 border-t border-slate-200/80 text-xs">
                   <div className="flex items-center gap-1.5 flex-wrap">
@@ -559,39 +586,66 @@ export const BuyView: React.FC = () => {
 
       {/* BILL TOTAL & PAYMENT SECTION */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs flex flex-col gap-3">
-        <div className="flex items-center justify-between pb-2 border-b border-slate-100 flex-wrap gap-2">
-          <div>
-            <span className="text-xs font-bold text-slate-500 uppercase">Total Bill Amount</span>
-            {billRoundAdjustment !== 0 && (
-              <span className="ml-2 text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
-                Adjusted by {billRoundAdjustment > 0 ? '+' : ''}{billRoundAdjustment}
-              </span>
-            )}
+        {/* Total Bill Amount - Editable & with 1-tap rounding */}
+        <div className="pb-3 border-b border-slate-100">
+          <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
+            <label className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
+              <span>Total Bill Amount (₹)</span>
+              {(customBillTotal !== '' || billRoundAdjustment !== 0) && (
+                <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+                  {grandTotal < sumActualTotals ? `Rounded down by ₹${(sumActualTotals - grandTotal).toFixed(0)}` : `Custom total`}
+                </span>
+              )}
+            </label>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {sumActualTotals > 0 && sumActualTotals % 10 !== 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const rounded = Math.floor(sumActualTotals / 10) * 10;
+                    setCustomBillTotal(rounded.toString());
+                  }}
+                  className="text-[11px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300 transition-colors"
+                  title={`Round down to ₹${Math.floor(sumActualTotals / 10) * 10}`}
+                >
+                  Round to ₹{Math.floor(sumActualTotals / 10) * 10}
+                </button>
+              )}
+              {(customBillTotal !== '' || billRoundAdjustment !== 0) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomBillTotal('');
+                    setBillRoundAdjustment(0);
+                  }}
+                  className="text-[10px] text-slate-500 hover:text-slate-800 underline font-semibold"
+                >
+                  Reset (₹{sumActualTotals})
+                </button>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            {grandTotal % 10 !== 0 && grandTotal > 10 && (
-              <button
-                type="button"
-                onClick={() => {
-                  const rounded = Math.floor(grandTotal / 10) * 10;
-                  setBillRoundAdjustment(rounded - sumActualTotals);
-                }}
-                className="text-[11px] font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 px-2 py-0.5 rounded-lg border border-emerald-300 transition-colors"
-                title="Quick Round down to nearest 10"
-              >
-                Round to ₹{Math.floor(grandTotal / 10) * 10}
-              </button>
-            )}
-            {billRoundAdjustment !== 0 && (
-              <button
-                type="button"
-                onClick={() => setBillRoundAdjustment(0)}
-                className="text-[10px] text-slate-500 underline font-medium"
-              >
-                Reset
-              </button>
-            )}
-            <span className="text-xl font-black text-emerald-800">{formatINR(grandTotal)}</span>
+          <div className="relative">
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-lg font-black text-emerald-700 pointer-events-none">₹</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder={sumActualTotals > 0 ? sumActualTotals.toString() : '0'}
+              value={
+                customBillTotal !== ''
+                  ? customBillTotal
+                  : grandTotal > 0
+                  ? grandTotal.toString()
+                  : ''
+              }
+              onChange={(e) => {
+                const val = e.target.value;
+                if (/^\d*\.?\d*$/.test(val)) {
+                  setCustomBillTotal(val);
+                }
+              }}
+              className="w-full h-12 pl-8 pr-3 text-xl font-black text-emerald-950 bg-emerald-50/60 border border-emerald-300 rounded-xl focus:ring-2 focus:ring-emerald-500 shadow-2xs"
+            />
           </div>
         </div>
 
