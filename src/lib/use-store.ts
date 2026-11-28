@@ -27,6 +27,7 @@ export function useStore(): ERPStoreData & {
   deleteExpense: typeof dataStore.deleteExpense;
   addExpenseCategory: typeof dataStore.addExpenseCategory;
   addWeightLoss: typeof dataStore.addWeightLoss;
+  deleteWeightLoss: typeof dataStore.deleteWeightLoss;
   setDailyRate: typeof dataStore.setDailyRate;
   getDailyRate: typeof dataStore.getDailyRate;
   updateSettings: typeof dataStore.updateSettings;
@@ -75,6 +76,7 @@ export function useStore(): ERPStoreData & {
     deleteExpense: dataStore.deleteExpense.bind(dataStore),
     addExpenseCategory: dataStore.addExpenseCategory.bind(dataStore),
     addWeightLoss: dataStore.addWeightLoss.bind(dataStore),
+    deleteWeightLoss: dataStore.deleteWeightLoss.bind(dataStore),
     setDailyRate: dataStore.setDailyRate.bind(dataStore),
     getDailyRate: dataStore.getDailyRate.bind(dataStore),
     updateSettings: dataStore.updateSettings.bind(dataStore),

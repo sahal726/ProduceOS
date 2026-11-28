@@ -811,5 +811,60 @@ describe('Cloud Sync & Persistence Engine (Prevent Data Loss)', () => {
     expect(ledger.entries[0].credit).toBe(530);
     expect(purchase.items[0].rate_per_kg).toBe(37.86);
   });
+
+  it('deleting a weight loss entry removes the loss and restores stock', () => {
+    const products = [
+      { id: 'prod-1', name: 'Coconut', is_active: true, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z' },
+    ];
+    const purchases: Purchase[] = [
+      {
+        id: 'p-1',
+        date: '2026-11-28',
+        created_at: '2026-11-28T10:00:00Z',
+        farmer_id: 'f-1',
+        farmer_name: 'Farmer',
+        total_amount: 5000,
+        paid_amount: 5000,
+        payment_mode: 'cash',
+        balance_payable: 0,
+        items: [
+          {
+            id: 'pi-1',
+            purchase_id: 'p-1',
+            product_id: 'prod-1',
+            product_name: 'Coconut',
+            quantity_kg: 100,
+            rate_per_kg: 50,
+            total_amount: 5000,
+          },
+        ],
+      },
+    ];
+
+    const initialLoss: WeightLoss = {
+      id: 'wl-1',
+      date: '2026-11-28',
+      created_at: '2026-11-28T11:00:00Z',
+      product_id: 'prod-1',
+      product_name: 'Coconut',
+      quantity_lost_kg: 15,
+      cost_rate_per_kg: 50,
+      total_loss_value: 750,
+      reason: 'Shrinkage',
+    };
+
+    // Before deletion: 100 - 15 = 85 kg
+    let stockInfo = computeProductCostHistory('prod-1', purchases, [], [initialLoss], []);
+    expect(stockInfo.currentStockKg).toBe(85);
+    expect(stockInfo.totalLossKg).toBe(15);
+
+    // After deleting the weight loss entry: stock is restored to 100 kg
+    const remainingLosses: WeightLoss[] = [initialLoss].filter((l) => l.id !== 'wl-1');
+    expect(remainingLosses.length).toBe(0);
+
+    stockInfo = computeProductCostHistory('prod-1', purchases, [], remainingLosses, []);
+    expect(stockInfo.currentStockKg).toBe(100);
+    expect(stockInfo.totalLossKg).toBe(0);
+  });
 });
 

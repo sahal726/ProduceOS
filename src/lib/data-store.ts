@@ -743,6 +743,14 @@ class ERPDataStore {
     return newLoss;
   }
 
+  public deleteWeightLoss(id: string): void {
+    this.recordDeletion(id);
+    this.updateData((prev) => ({
+      ...prev,
+      weight_losses: prev.weight_losses.filter((wl) => wl.id !== id),
+    }));
+  }
+
   // --- Daily Rates ---
   public setDailyRate(productId: string, date: string, sellingRatePerKg: number): void {
     this.updateData((prev) => {

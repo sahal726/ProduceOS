@@ -71,6 +71,7 @@ export const MoreView: React.FC = () => {
     addProduct,
     updateProduct,
     addWeightLoss,
+    deleteWeightLoss,
     addExpense,
     deleteExpense,
     addExpenseCategory,
@@ -144,6 +145,12 @@ export const MoreView: React.FC = () => {
     setLossQtyRaw('');
     setLossNote('');
     alert(`Weight loss of ${qty} kg recorded successfully.`);
+  };
+
+  const handleDeleteWeightLoss = (id: string, prodName: string, qty: number) => {
+    if (window.confirm(`Delete weight difference entry for ${prodName} (${qty} kg)? This will restore ${qty} kg back to stock.`)) {
+      deleteWeightLoss(id);
+    }
   };
 
   // --- 2. EXPENSES STATE ---
@@ -675,7 +682,7 @@ export const MoreView: React.FC = () => {
             ) : (
               <div className="divide-y divide-slate-100">
                 {weight_losses.map((wl) => (
-                  <div key={wl.id} className="py-2.5 flex items-center justify-between">
+                  <div key={wl.id} className="py-2.5 flex items-center justify-between gap-2">
                     <div>
                       <div className="text-xs font-bold text-slate-900">
                         {wl.product_name} - {wl.quantity_lost_kg} kg ({wl.reason})
@@ -684,8 +691,18 @@ export const MoreView: React.FC = () => {
                         {wl.date} {wl.notes ? `• ${wl.notes}` : ''}
                       </div>
                     </div>
-                    <div className="text-xs font-black text-rose-600">
-                      -{formatINR(wl.total_loss_value)}
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      <div className="text-xs font-black text-rose-600">
+                        -{formatINR(wl.total_loss_value)}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteWeightLoss(wl.id, wl.product_name, wl.quantity_lost_kg)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                        title="Delete this weight loss entry"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                 ))}
