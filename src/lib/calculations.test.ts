@@ -760,5 +760,56 @@ describe('Cloud Sync & Persistence Engine (Prevent Data Loss)', () => {
     const today = getLocalDateString();
     expect(today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
+
+  it('consecutive rate calculation updates rate/kg when total price is edited (e.g. coconut from ₹532 to ₹530)', () => {
+    const qtyKg = 14;
+    const initialRate = 38;
+    const initialCalculatedTotal = Number((qtyKg * initialRate).toFixed(2));
+    expect(initialCalculatedTotal).toBe(532);
+
+    // User edits total price to 530
+    const editedTotal = 530;
+    const consecutiveRate = Number((editedTotal / qtyKg).toFixed(2));
+    expect(consecutiveRate).toBe(37.86);
+
+    // Verify farmer ledger records exact 530 total with effective 37.86 rate
+    const farmer: Farmer = {
+      id: 'f-coconut',
+      name: 'Coconut Grower',
+      opening_balance_payable: 0,
+      is_active: true,
+      created_at: '2026-11-01T00:00:00Z',
+      updated_at: '2026-11-01T00:00:00Z',
+    };
+    const purchase: Purchase = {
+      id: 'p-coconut-1',
+      date: '2026-11-28',
+      created_at: '2026-11-28T10:00:00Z',
+      farmer_id: 'f-coconut',
+      farmer_name: 'Coconut Grower',
+      total_amount: editedTotal,
+      paid_amount: 0,
+      payment_mode: 'cash',
+      balance_payable: editedTotal,
+      items: [
+        {
+          id: 'pi-coconut-1',
+          purchase_id: 'p-coconut-1',
+          product_id: 'prod-coconut',
+          product_name: 'Coconut',
+          quantity_kg: qtyKg,
+          rate_per_kg: consecutiveRate,
+          total_amount: editedTotal,
+        },
+      ],
+    };
+
+    const ledger = computeFarmerLedger(farmer, [purchase], []);
+    expect(ledger.totalPurchased).toBe(530);
+    expect(ledger.closingBalancePayable).toBe(530);
+    expect(ledger.entries.length).toBe(1);
+    expect(ledger.entries[0].credit).toBe(530);
+    expect(purchase.items[0].rate_per_kg).toBe(37.86);
+  });
 });
 

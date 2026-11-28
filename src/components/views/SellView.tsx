@@ -71,6 +71,7 @@ export const SellView: React.FC = () => {
     product_name: string;
     raw_qty: string;
     rate_per_kg: string;
+    original_rate?: string;
     custom_total?: string;
     // Optional weigh-in vs weigh-out
     show_weight_diff: boolean;
@@ -177,16 +178,190 @@ export const SellView: React.FC = () => {
     );
   };
 
+  // 2-Way Live Sync: Quantity, Rate / KG, and Total Price
+  const handleQuantityChange = (id: string, rawQty: string) => {
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.id !== id) return it;
+        const qty = parseFloat(rawQty) || 0;
+        const rate = parseFloat(it.rate_per_kg) || 0;
+        if (qty > 0 && rate > 0) {
+          return {
+            ...it,
+            raw_qty: rawQty,
+            custom_total: undefined,
+          };
+        }
+        const customTot = parseFloat(it.custom_total || '') || 0;
+        if (customTot > 0 && qty > 0 && rate === 0) {
+          return {
+            ...it,
+            raw_qty: rawQty,
+            rate_per_kg: Number((customTot / qty).toFixed(2)).toString(),
+          };
+        }
+        return { ...it, raw_qty: rawQty };
+      })
+    );
+  };
+
+  const handleRateChange = (id: string, rateStr: string) => {
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.id !== id) return it;
+        return {
+          ...it,
+          rate_per_kg: rateStr,
+          original_rate: rateStr,
+          custom_total: undefined,
+        };
+      })
+    );
+    if (items.length === 1) {
+      setCustomBillTotal('');
+      setBillRoundAdjustment(0);
+    }
+  };
+
+  const handleItemTotalChange = (id: string, totalStr: string) => {
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.id !== id) return it;
+        const total = parseFloat(totalStr) || 0;
+        const qty = parseFloat(it.raw_qty) || 0;
+        let newRateStr = it.rate_per_kg;
+        if (qty > 0) {
+          if (totalStr === '') {
+            newRateStr = '';
+          } else if (total > 0) {
+            newRateStr = Number((total / qty).toFixed(2)).toString();
+          }
+        }
+        return {
+          ...it,
+          custom_total: totalStr,
+          rate_per_kg: newRateStr,
+          original_rate: it.original_rate || it.rate_per_kg,
+        };
+      })
+    );
+    if (items.length === 1) {
+      setCustomBillTotal(totalStr);
+      setBillRoundAdjustment(0);
+    }
+  };
+
+  const handleRoundItem = (id: string, roundedTotal: number) => {
+    const totalStr = roundedTotal.toString();
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.id !== id) return it;
+        const qty = parseFloat(it.raw_qty) || 0;
+        const newRateStr = qty > 0 ? Number((roundedTotal / qty).toFixed(2)).toString() : it.rate_per_kg;
+        return {
+          ...it,
+          custom_total: totalStr,
+          rate_per_kg: newRateStr,
+          original_rate: it.original_rate || it.rate_per_kg,
+        };
+      })
+    );
+    if (items.length === 1) {
+      setCustomBillTotal(totalStr);
+      setBillRoundAdjustment(0);
+    }
+  };
+
+  const handleResetItemPrice = (id: string) => {
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.id !== id) return it;
+        return {
+          ...it,
+          rate_per_kg: it.original_rate || it.rate_per_kg,
+          custom_total: undefined,
+        };
+      })
+    );
+    if (items.length === 1) {
+      setCustomBillTotal('');
+      setBillRoundAdjustment(0);
+    }
+  };
+
+  const handleBillTotalChange = (val: string) => {
+    setCustomBillTotal(val);
+    setBillRoundAdjustment(0);
+    if (items.length === 1) {
+      const it = items[0];
+      const qty = parseFloat(it.raw_qty) || 0;
+      let newRateStr = it.rate_per_kg;
+      if (qty > 0) {
+        if (val === '') {
+          newRateStr = '';
+        } else if (parseFloat(val) > 0) {
+          newRateStr = Number((parseFloat(val) / qty).toFixed(2)).toString();
+        }
+      }
+      setItems([
+        {
+          ...it,
+          custom_total: val,
+          rate_per_kg: newRateStr,
+          original_rate: it.original_rate || it.rate_per_kg,
+        },
+      ]);
+    }
+  };
+
+  const handleRoundBill = (roundedTotal: number) => {
+    const val = roundedTotal.toString();
+    setCustomBillTotal(val);
+    setBillRoundAdjustment(0);
+    if (items.length === 1) {
+      const it = items[0];
+      const qty = parseFloat(it.raw_qty) || 0;
+      const newRateStr = qty > 0 ? Number((roundedTotal / qty).toFixed(2)).toString() : it.rate_per_kg;
+      setItems([
+        {
+          ...it,
+          custom_total: val,
+          rate_per_kg: newRateStr,
+          original_rate: it.original_rate || it.rate_per_kg,
+        },
+      ]);
+    }
+  };
+
+  const handleResetBill = () => {
+    setCustomBillTotal('');
+    setBillRoundAdjustment(0);
+    if (items.length === 1) {
+      const it = items[0];
+      setItems([
+        {
+          ...it,
+          rate_per_kg: it.original_rate || it.rate_per_kg,
+          custom_total: undefined,
+        },
+      ]);
+    }
+  };
+
   // Computations
   const computedItems = items.map((it) => {
     const qtyKg = parseFloat(it.raw_qty) || 0;
-    const ratePerKg = parseFloat(it.rate_per_kg) || 0;
-    const calculatedLineTotal = Number((qtyKg * ratePerKg).toFixed(2));
+    const inputRate = parseFloat(it.rate_per_kg) || 0;
+    const origRate = parseFloat(it.original_rate || it.rate_per_kg) || inputRate;
+    const calculatedLineTotal = Number((qtyKg * (origRate > 0 ? origRate : inputRate)).toFixed(2));
     const hasCustomTotal =
       it.custom_total !== undefined &&
       it.custom_total !== '' &&
       !isNaN(parseFloat(it.custom_total));
-    const lineTotal = hasCustomTotal ? parseFloat(it.custom_total!) : calculatedLineTotal;
+    const lineTotal = hasCustomTotal ? parseFloat(it.custom_total!) : Number((qtyKg * inputRate).toFixed(2));
+    const ratePerKg = inputRate > 0 ? inputRate : (qtyKg > 0 && lineTotal > 0 ? Number((lineTotal / qtyKg).toFixed(2)) : 0);
+    const isCustomTotal =
+      hasCustomTotal && (it.original_rate !== undefined ? it.rate_per_kg !== it.original_rate : lineTotal !== calculatedLineTotal);
 
     // Stock & Cost
     const costInfo = computeProductCostHistory(
@@ -215,7 +390,7 @@ export const SellView: React.FC = () => {
       ratePerKg,
       calculatedLineTotal,
       lineTotal,
-      isCustomTotal: hasCustomTotal,
+      isCustomTotal,
       availableStockKg,
       weightedAvgCost,
       cogsAmount,
@@ -594,17 +769,24 @@ export const SellView: React.FC = () => {
                 <QuantityInput
                   label="Quantity Sold (KG)"
                   rawQuantity={it.raw_qty}
-                  onQuantityChange={(val) => handleUpdateItem(it.id, { raw_qty: val })}
+                  onQuantityChange={(val) => handleQuantityChange(it.id, val)}
                   placeholder="e.g. 50 or 500"
                   required
                 />
 
-                {/* Selling Rate (per KG) & Item Total (₹) */}
+                {/* Selling Rate (per KG) & Item Total (₹) (2-Way Live Sync) */}
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-xs font-bold text-slate-700 uppercase">
-                      Rate / KG (₹) <span className="text-rose-500">*</span>
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-700 uppercase">
+                        Rate / KG (₹) <span className="text-rose-500">*</span>
+                      </label>
+                      {computed.isCustomTotal && (
+                        <span className="text-[10px] text-amber-800 font-extrabold bg-amber-100 px-1 rounded">
+                          Auto-adjusted
+                        </span>
+                      )}
+                    </div>
                     <input
                       type="text"
                       inputMode="decimal"
@@ -613,7 +795,7 @@ export const SellView: React.FC = () => {
                       onChange={(e) => {
                         const val = e.target.value;
                         if (/^\d*\.?\d*$/.test(val)) {
-                          handleUpdateItem(it.id, { rate_per_kg: val, custom_total: undefined });
+                          handleRateChange(it.id, val);
                         }
                       }}
                       className="w-full h-11 mt-1 px-3 text-sm font-bold text-slate-900 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"
@@ -628,7 +810,7 @@ export const SellView: React.FC = () => {
                       {computed.isCustomTotal && (
                         <button
                           type="button"
-                          onClick={() => handleUpdateItem(it.id, { custom_total: undefined })}
+                          onClick={() => handleResetItemPrice(it.id)}
                           className="text-[10px] text-blue-700 hover:text-blue-900 font-bold underline"
                           title="Reset to Qty × Rate"
                         >
@@ -643,19 +825,19 @@ export const SellView: React.FC = () => {
                       value={
                         it.custom_total !== undefined
                           ? it.custom_total
-                          : computed.calculatedLineTotal > 0
-                          ? computed.calculatedLineTotal.toString()
+                          : computed.lineTotal > 0
+                          ? computed.lineTotal.toString()
                           : ''
                       }
                       onChange={(e) => {
                         const val = e.target.value;
                         if (/^\d*\.?\d*$/.test(val)) {
-                          handleUpdateItem(it.id, { custom_total: val });
+                          handleItemTotalChange(it.id, val);
                         }
                       }}
                       className={`w-full h-11 mt-1 px-3 text-sm font-extrabold rounded-xl focus:ring-2 focus:ring-blue-500 ${
                         computed.isCustomTotal
-                          ? 'bg-amber-50 border border-amber-300 text-amber-950 font-black'
+                          ? 'bg-amber-50 border-2 border-amber-400 text-amber-950 font-black'
                           : 'bg-white border border-slate-300 text-slate-900'
                       }`}
                     />
@@ -663,18 +845,15 @@ export const SellView: React.FC = () => {
                 </div>
 
                 {/* Quick 1-tap Rounding for Line Item */}
-                {computed.calculatedLineTotal > 0 && computed.calculatedLineTotal % 10 !== 0 && !computed.isCustomTotal && (
+                {computed.lineTotal > 0 && computed.lineTotal % 10 !== 0 && (
                   <div className="flex justify-end pt-1">
                     <button
                       type="button"
-                      onClick={() =>
-                        handleUpdateItem(it.id, {
-                          custom_total: (Math.floor(computed.calculatedLineTotal / 10) * 10).toString(),
-                        })
-                      }
+                      onClick={() => handleRoundItem(it.id, Math.floor(computed.lineTotal / 10) * 10)}
                       className="text-[11px] font-bold text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-300 px-2 py-0.5 rounded-md transition-colors"
+                      title={`Round down to ₹${Math.floor(computed.lineTotal / 10) * 10}`}
                     >
-                      Round to ₹{Math.floor(computed.calculatedLineTotal / 10) * 10}
+                      Round to ₹{Math.floor(computed.lineTotal / 10) * 10}
                     </button>
                   </div>
                 )}
@@ -749,7 +928,7 @@ export const SellView: React.FC = () => {
                     <span className="text-slate-500 font-medium">Final Line Price:</span>
                     {computed.isCustomTotal && (
                       <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
-                        Rounded from {formatINR(computed.calculatedLineTotal)}
+                        ₹{computed.ratePerKg}/kg (Adjusted from ₹{formatINR(computed.calculatedLineTotal)})
                       </span>
                     )}
                   </div>
@@ -782,7 +961,7 @@ export const SellView: React.FC = () => {
                   type="button"
                   onClick={() => {
                     const rounded = Math.floor(sumActualTotals / 10) * 10;
-                    setCustomBillTotal(rounded.toString());
+                    handleRoundBill(rounded);
                   }}
                   className="text-[11px] font-bold text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-300 transition-colors"
                   title={`Round down to ₹${Math.floor(sumActualTotals / 10) * 10}`}
@@ -793,10 +972,7 @@ export const SellView: React.FC = () => {
               {(customBillTotal !== '' || billRoundAdjustment !== 0) && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setCustomBillTotal('');
-                    setBillRoundAdjustment(0);
-                  }}
+                  onClick={handleResetBill}
                   className="text-[10px] text-slate-500 hover:text-slate-800 underline font-semibold"
                 >
                   Reset (₹{sumActualTotals})
@@ -820,7 +996,7 @@ export const SellView: React.FC = () => {
               onChange={(e) => {
                 const val = e.target.value;
                 if (/^\d*\.?\d*$/.test(val)) {
-                  setCustomBillTotal(val);
+                  handleBillTotalChange(val);
                 }
               }}
               className="w-full h-12 pl-8 pr-3 text-xl font-black text-blue-950 bg-blue-50/60 border border-blue-300 rounded-xl focus:ring-2 focus:ring-blue-500 shadow-2xs"
